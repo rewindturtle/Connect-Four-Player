@@ -1,11 +1,11 @@
 #include "memo.h"
 #include <stdlib.h>
-
+#include <Arduino.h>
 
 
 
 MemoEntry* initMemo() {
-    void* mem = malloc(sizeof(MemoEntry) * MEMO_SIZE);
+    void* mem = ps_malloc(sizeof(MemoEntry) * MEMO_SIZE);
     if (!mem) return nullptr;
 
     MemoEntry* memo = static_cast<MemoEntry*>(mem);
