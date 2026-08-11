@@ -7,20 +7,20 @@
 // Forward Declaration
 struct Player;
 
-typedef int8_t (*EvalFn)(const Board& board, const Player& player);
+typedef int8_t (*ScoreFunc)(const Board& board, const Player& player, uint8_t depth);
+
+inline int8_t standardscoreFunc(const Board& board, const Player& player, uint8_t depth) {
+    return 0;
+}
+
 
 struct Player {
     MemoEntry* memo = nullptr;
-    EvalFn evalFunc = nullptr;
+    ScoreFunc scoreFunc = standardscoreFunc;
     uint8_t maxDepth = 4;
     uint8_t turn = 0;
     bool isRed = true;
 };
-
-
-inline int8_t standardEval(const Board& board, const Player& player) {
-    return 0;
-}
 
 
 uint8_t chooseColumn(const Player& player, const Board& board);

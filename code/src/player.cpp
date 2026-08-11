@@ -43,7 +43,7 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
     }
 
     if (depth == 0) {
-        return player.evalFunc(board, player);
+        return player.scoreFunc(board, player);
     }
 
     int8_t score = MIN_SCORE;
@@ -110,7 +110,7 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
     }
 
     if (depth == 0) {
-        return -player.evalFunc(board, player);
+        return -player.scoreFunc(board, player);
     }
 
     int8_t score = MIN_SCORE;
