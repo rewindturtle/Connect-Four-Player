@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define BOARD_MASK 0x000003FFFFFFFFFF
+
 
 struct Board {
     uint64_t redPieces;
@@ -29,9 +31,13 @@ inline bool isPieceMask(uint64_t pieces, uint64_t mask) {
     return (pieces & mask) != 0;
 }
 
-inline bool canPlacePiece(const Board& board, uint8_t col) {
+inline bool isColumnFull(const Board& board, uint8_t col) {
     uint64_t mask = 1 << (col + 35);
-    return (board.allPieces & mask) == 0;
+    return (board.allPieces & mask) != 0;
+}
+
+inline bool isBoardFull(const Board& board) {
+    return (board.allPieces & BOARD_MASK) == BOARD_MASK;
 }
 
 bool containsWin(uint64_t pieces);
