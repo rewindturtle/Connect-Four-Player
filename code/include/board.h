@@ -3,7 +3,12 @@
 
 #include <stdint.h>
 
-#define BOARD_MASK 0x000003FFFFFFFFFF
+// Column-major bitboard: a cell is bit (7 * col + row), row 0 at the bottom.
+// Each column gets 7 bits for 6 cells; the spare row-6 bit is a sentinel that
+// is never filled, so a four-in-a-row shift can never wrap into the next
+// column. That is what lets containsWin be four shift-and pairs.
+#define COLUMN_MASK 0x3FULL
+#define BOARD_MASK 0x0000FDFBF7EFDFBFULL
 
 
 struct Board {
@@ -17,13 +22,12 @@ inline uint64_t getYellowPieces(const Board& board) {
 }
 
 inline bool isPieceRowCol(uint64_t pieces, uint8_t row, uint8_t col) {
-    uint8_t bitPos = 7 * row + col;
-    uint64_t mask = 1 << bitPos;
+    uint64_t mask = 1ULL << (7 * col + row);
     return (pieces & mask) != 0;
 }
 
 inline bool isPiecePos(uint64_t pieces, uint8_t pos) {
-    uint64_t mask = 1 << pos;
+    uint64_t mask = 1ULL << pos;
     return (pieces & mask) != 0;
 }
 
@@ -32,7 +36,7 @@ inline bool isPieceMask(uint64_t pieces, uint64_t mask) {
 }
 
 inline bool isColumnFull(const Board& board, uint8_t col) {
-    uint64_t mask = 1 << (col + 35);
+    uint64_t mask = 1ULL << (7 * col + 5);
     return (board.allPieces & mask) != 0;
 }
 

@@ -1,218 +1,41 @@
 #include "board.h"
 
 
-bool doesRowContainWin(uint64_t pieces, uint8_t row) {
-    // Check middle position first.
-    // If middle pos is not filled, there is no win in this row
-    uint64_t mask = 1 << (row + 3);
-    if (!isPieceMask(pieces, mask)) {
-        // X X X 0 X X X
-        return false;
-    }
-
-    // X X X 1 X X X
-    // Check the middle positions neighbours
-    mask = 1 << (row + 2);
-    if (isPieceMask(pieces, mask)) {
-
-        // X X 1 1 X X X
-        mask = 1 << (row + 4);
-        if (isPieceMask(pieces, mask)) {
-            // X X 1 1 1 X X
-            mask = 1 << (row + 5);
-            if (isPieceMask(pieces, mask)) {
-                // Columns 2, 3, 4, 5
-                // X X 1 1 1 1 X
-                return true;
-            }
-
-            mask = 1 << (row + 1);
-            // If true:  X 1 1 1 1 0 X
-            // If false: X 0 1 1 1 0 X
-            return isPieceMask(pieces, mask);
-        }
-        
-        // X X 1 1 0 X X
-        mask = 1 << (row + 1);
-        if (!isPieceMask(pieces, mask)) {
-            // X 0 1 1 0 X X
-            return false;
-        }
-
-        // If true:  1 1 1 1 0 X X
-        // If false: 0 1 1 1 0 X X
-        mask = 1 << row;
-        return isPieceMask(pieces, mask);
-    }
-
-    // X X 0 1 X X X
-    mask = 1 << (row + 4);
-    if (!isPieceMask(pieces, mask)) {
-        // X X 0 1 0 X X
-        return false;
-    }
-
-    // X X 0 1 1 X X
-    mask = 1 << (row + 5);
-    if (!isPieceMask(pieces, mask)) {
-        // X X 0 1 1 0 X
-        return false;
-    }
-
-    mask = 1 << (row + 6);
-    // If true:  X X 0 1 1 1 1
-    // If false: X X 0 1 1 1 0
-    return isPieceMask(pieces, mask);
-}
-
-
-bool doesColContainWin(uint64_t pieces, uint8_t col) {
-    // If rows 2 and 3 do not contain pieces, there is no win
-
-    // Row Indices
-    // 0: 0
-    // 1: 7
-    // 2: 14
-    // 3: 21
-    // 4: 28
-    // 5: 35
-
-    uint64_t mask = 1 << (col + 14);
-    if (!isPieceMask(pieces, mask)) {
-        // X X 0 X X X
-        return false;
-    }
-
-    mask = 1 << (col + 21);
-    if (!isPieceMask(pieces, mask)) {
-        // X X 1 0 X X
-        return false;
-    }
-
-    // X X 1 1 X X
-    mask = 1 << (col + 7);
-    if (isPieceMask(pieces, mask)) {
-        // X 1 1 1 X X
-        mask = 1 << col;
-        if (isPieceMask(pieces, mask)) {
-            // 1 1 1 1 X X
-            return true;
-        }
-
-        mask = 1 << (col + 28);
-        // If true:  0 1 1 1 1 X
-        // If false: 0 1 1 1 0 X
-        return isPieceMask(pieces, mask);
-    }
-
-    // X 0 1 1 X X
-    mask = 1 << (col + 28);
-    if (!isPieceMask(pieces, mask)) {
-        // X 0 1 1 0 X
-        return false;
-    }
-
-    mask = 1 << (col + 35);
-    // If true:  X 0 1 1 1 1
-    // If false: X 0 1 1 1 0
-    return isPieceMask(pieces, mask);
-}
-
-
-bool doesRightDiagContainWin(uint64_t pieces) {
-    for (uint8_t r = 0; r < 28; r += 7) {
-        for (uint8_t c = 0; c < 4; ++c) {
-            uint8_t bitPos = r + c;
-            if (!isPiecePos(pieces, bitPos)) {
-                continue;
-            }
-
-            bitPos += 8;
-            if (!isPiecePos(pieces, bitPos)) {
-                continue;
-            }
-
-            bitPos += 8;
-            if (!isPiecePos(pieces, bitPos)) {
-                continue;
-            }
-
-            bitPos += 8;
-            if (isPiecePos(pieces, bitPos)) {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-
-bool doesLeftDiagContainWin(uint64_t pieces) {
-    for (uint8_t r = 0; r < 28; r += 7) {
-        for (uint8_t c = 0; c < 4; ++c) {
-            uint8_t bitPos = r + c + 24; // 7 * 3 + 3
-            if (!isPiecePos(pieces, bitPos)) {
-                continue;
-            }
-
-            bitPos -= 8;
-            if (!isPiecePos(pieces, bitPos)) {
-                continue;
-            }
-
-            bitPos -= 8;
-            if (!isPiecePos(pieces, bitPos)) {
-                continue;
-            }
-
-            bitPos -= 8;
-            if (isPiecePos(pieces, bitPos)) {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-
 bool containsWin(uint64_t pieces) {
-    // Check for row wins
-    for (uint8_t r = 0; r < 42; r += 7) {
-        if (doesRowContainWin(pieces, r)) return true;
-    }
+    // Step 1 is vertical, 7 horizontal, 8 the "/" diagonal, 6 the "\" diagonal.
+    // Pairing a step with double that step tests all four cells at once.
+    uint64_t m = pieces & (pieces >> 1);
+    if (m & (m >> 2)) return true;
 
-    // Check for column wins
-    for (uint8_t c = 0; c < 7; ++c) {
-        if (doesColContainWin(pieces, c)) return true;
-    }
+    m = pieces & (pieces >> 7);
+    if (m & (m >> 14)) return true;
 
-    if (doesRightDiagContainWin(pieces)) return true;
-    return doesLeftDiagContainWin(pieces);
+    m = pieces & (pieces >> 8);
+    if (m & (m >> 16)) return true;
+
+    m = pieces & (pieces >> 6);
+    return (m & (m >> 12)) != 0;
+}
+
+
+// Adding the column's bottom bit to its occupied cells carries up into the
+// lowest empty one, which is where the piece lands.
+static uint64_t landingMask(const Board& board, uint8_t col) {
+    uint8_t idx = 7 * col;
+    uint64_t colMask = COLUMN_MASK << idx;
+    return ((board.allPieces & colMask) + (1ULL << idx)) & colMask;
 }
 
 
 void placeRedPiece(Board& board, uint8_t col) {
-    for (uint8_t p = col; p < 42; p += 7) {
-        uint64_t mask = 1 << p;
-        if (!isPieceMask(board.allPieces, mask)) {
-            board.redPieces |= mask;
-            board.allPieces |= mask;
-            return;
-        }
-    }
+    uint64_t mask = landingMask(board, col);
+    board.redPieces |= mask;
+    board.allPieces |= mask;
 }
 
 
 void placeYellowPiece(Board& board, uint8_t col) {
-    for (uint8_t p = col; p < 42; p += 7) {
-        uint64_t mask = 1 << p;
-        if (!isPieceMask(board.allPieces, mask)) {
-            board.allPieces |= mask;
-            return;
-        }
-    }
+    board.allPieces |= landingMask(board, col);
 }
 
 
@@ -233,14 +56,22 @@ uint32_t hashBoard(const Board& board) {
     };
 
     uint32_t hash = 0;
-    for (uint8_t i = 0; i < 42; ++i) {
-        uint64_t mask = 1 << i;
-        if ((board.allPieces & mask) == 0) continue;
+    uint8_t cell = 0;
+    for (uint8_t col = 0; col < 49; col += 7) {
+        for (uint8_t row = 0; row < 6; ++row) {
+            uint64_t mask = 1ULL << (col + row);
+            if ((board.allPieces & mask) == 0) {
+                ++cell;
+                continue;
+            }
 
-        if ((board.redPieces & mask) != 0) {
-            hash ^= ZOBRIST_TABLE[i];
-        } else {
-            hash ^= ZOBRIST_TABLE[i + 42];
+            if ((board.redPieces & mask) != 0) {
+                hash ^= ZOBRIST_TABLE[cell];
+            } else {
+                hash ^= ZOBRIST_TABLE[cell + 42];
+            }
+
+            ++cell;
         }
     }
 

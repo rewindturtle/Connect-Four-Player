@@ -4,17 +4,25 @@
 #include "board.h"
 #include "memo.h"
 
+// Forward Declaration
+struct Player;
+
+typedef int8_t (*EvalFn)(const Board& board, const Player& player);
 
 struct Player {
     MemoEntry* memo = nullptr;
+    EvalFn evalFunc = nullptr;
     uint8_t maxDepth = 4;
     uint8_t turn = 0;
     bool isRed = true;
 };
 
 
-int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta);
-int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta);
+inline int8_t standardEval(const Board& board, const Player& player) {
+    return 0;
+}
+
+
 uint8_t chooseColumn(const Player& player, const Board& board);
 
 

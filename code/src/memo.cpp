@@ -7,10 +7,10 @@
 MemoEntry* initMemo() {
     void* mem = malloc(sizeof(MemoEntry) * MEMO_SIZE);
     if (!mem) return nullptr;
-    
+
     MemoEntry* memo = static_cast<MemoEntry*>(mem);
     for (uint32_t i = 0; i < MEMO_SIZE; ++i) {
-        memo[i].depth = 0;
+        memo[i].flagAndDepth = 0;
     }
 
     return memo;
@@ -21,7 +21,7 @@ void resetMemo(MemoEntry* memo) {
     if (memo == nullptr) return;
 
     for (uint32_t i = 0; i < MEMO_SIZE; ++i) {
-        memo[i].depth = 0;
+        memo[i].flagAndDepth = 0;
     }
 }
 
@@ -33,17 +33,21 @@ void freeMemo(MemoEntry* memo) {
 }
 
 
-bool insertMemoEntry(MemoEntry& entry, int8_t score, uint8_t depth, int8_t alpha, int8_t beta) {
-    if (depth <= entry.depth) return false;
+bool insertMemoEntry(MemoEntry& entry, uint16_t key, int8_t score, uint8_t depth, int8_t alpha, int8_t beta) {
+    if (depth <= getMemoDepth(entry)) return false;
 
+    entry.key = key;
     entry.score = score;
-    entry.depth = depth;
 
+    uint8_t flag;
     if (score <= alpha) {
-        entry.flag = MEMO_FLAG_UB;
+        flag = MEMO_FLAG_UB;
     } else if (score >= beta) {
-        entry.flag = MEMO_FLAG_LB;
+        flag = MEMO_FLAG_LB;
     } else {
-        entry.flag = MEMO_FLAG_EXACT;
+        flag = MEMO_FLAG_EXACT;
     }
+
+    entry.flagAndDepth = flag | depth;
+    return true;
 }
