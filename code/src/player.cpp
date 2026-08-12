@@ -57,19 +57,18 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
         int8_t newScore = -negaMaxYellow(newBoard, player, depth - 1, -beta, -alpha);
         if (player.forceStop) return 0;
 
-        bool breakLoop = false;
         if (newScore > score) {
             score = newScore;
             if (score > alpha) {
                 alpha = score;
                 if (alpha >= beta) {
-                    breakLoop = true;
+                    goto earlyBreak;
                 }
             }
         }
-
-        if (breakLoop) break;
     }
+
+    earlyBreak:
 
     insertMemoEntry(entry, key, score, depth, originalAlpha, beta);
     return score;
@@ -123,19 +122,18 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
         placeYellowPiece(newBoard, c);
         int8_t newScore = -negaMaxRed(newBoard, player, depth - 1, -beta, -alpha);
 
-        bool breakLoop = false;
         if (newScore > score) {
             score = newScore;
             if (score > alpha) {
                 alpha = score;
                 if (alpha >= beta) {
-                    breakLoop = true;
+                    goto earlyBreak;
                 }
             }
         }
-
-        if (breakLoop) break;
     }
+
+    earlyBreak:
 
     insertMemoEntry(entry, key, score, depth, originalAlpha, beta);
     return score;

@@ -20,8 +20,9 @@
 
 struct MemoEntry {
     // The position of the entry is equal to (hash & MEMO_SLOT_MASK)
-    // The key is the remaining 32 - MEMO_BITS bits of the hash,
-    // used to check if two hashes are equal during collisions
+    // The key is the next 16 bits of the hash to check if two colliding
+    // hashes are equal. It is possible for two different uint64_t hashes
+    // to have the same 16 + MEMO_BITS bits but it is very rare so is allowable
     uint16_t key;
 
     // Score is between -42 and +42
