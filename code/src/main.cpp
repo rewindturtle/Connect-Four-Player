@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 void setup() {
-  srand(time(NULL));
+
 }
 
 
