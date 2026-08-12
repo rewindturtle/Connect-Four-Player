@@ -1,5 +1,6 @@
 #include "memo.h"
 #include <stdlib.h>
+#include <string.h>
 #include <Arduino.h>
 
 
@@ -9,9 +10,7 @@ MemoEntry* initMemo() {
     if (!mem) return nullptr;
 
     MemoEntry* memo = static_cast<MemoEntry*>(mem);
-    for (uint32_t i = 0; i < MEMO_SIZE; ++i) {
-        memo[i].flagAndHorizon = 0;
-    }
+    memset(memo, 0, sizeof(MemoEntry) * MEMO_SIZE);
 
     return memo;
 }
@@ -20,9 +19,7 @@ MemoEntry* initMemo() {
 void resetMemo(MemoEntry* memo) {
     if (memo == nullptr) return;
 
-    for (uint32_t i = 0; i < MEMO_SIZE; ++i) {
-        memo[i].flagAndHorizon = 0;
-    }
+    memset(memo, 0, sizeof(MemoEntry) * MEMO_SIZE);
 }
 
 
@@ -33,21 +30,23 @@ void freeMemo(MemoEntry* memo) {
 }
 
 
-bool insertMemoEntry(MemoEntry& entry, uint16_t key, int8_t score, uint8_t horizon, int8_t alpha, int8_t beta) {
-    if (getMemoHorizon(entry) > horizon) return false;
+bool insertMemoEntry(MemoEntry& entry, uint16_t key, int8_t score, uint8_t depth, int8_t alpha, int8_t beta) {
+    // Deeper in the tree (smaller depth) wins the slot; equal depths overwrite
+    uint8_t entryDepth = getMemoDepth(entry);
+    if (entryDepth != 0 && depth > entryDepth) return false;
 
     entry.key = key;
     entry.score = score;
 
     uint8_t flag;
-    if (alpha > score) {
+    if (score <= alpha) {
         flag = MEMO_FLAG_UB;
-    } else if (beta < score) {
+    } else if (score >= beta) {
         flag = MEMO_FLAG_LB;
     } else {
         flag = MEMO_FLAG_EXACT;
     }
 
-    entry.flagAndHorizon = flag | horizon;
+    entry.flagAndDepth = flag | depth;
     return true;
 }

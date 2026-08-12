@@ -2,6 +2,9 @@
 #include <stdlib.h>
 
 
+static const uint8_t COL_SEARCH_ORDER[7] = {3, 2, 4, 1, 5, 0, 6};
+
+
 // Forward Declaration
 int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta);
 
@@ -12,11 +15,11 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
     uint64_t hash = hashBoard(board);
     uint32_t slot = hash & MEMO_SLOT_MASK;
     uint16_t key = (hash >> MEMO_BITS) & 0xFFFF;
-    uint8_t horizon = player.turn + (player.maxDepth - depth);
     MemoEntry& entry = player.memo[slot];
 
-    uint8_t slotHorizon = getMemoHorizon(entry);
-    if (horizon < slotHorizon && entry.key == key) {
+    // A non-zero score is a proven win or loss, which no deeper search can change
+    uint8_t slotDepth = getMemoDepth(entry);
+    if (slotDepth != 0 && entry.key == key && (slotDepth >= depth || entry.score != 0)) {
         int8_t score = entry.score;
         uint8_t flag = getMemoFlag(entry);
 
@@ -36,7 +39,7 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
 
     // Yellow moved into this node, so a yellow win here is a loss for red
     if (containsWin(getYellowPieces(board))) {
-        return -(MAX_SCORE - horizon);
+        return -(MAX_SCORE - (player.turn + (player.maxDepth - depth)));
     }
 
     if (depth == 0 || isBoardFull(board)) {
@@ -44,7 +47,9 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
     }
 
     int8_t score = MIN_SCORE;
-    for (uint8_t c = 0; c < 7; ++c) {
+    for (uint8_t i = 0; i < 7; ++i) {
+        uint8_t c = COL_SEARCH_ORDER[i];
+
         if (isColumnFull(board, c)) continue;
 
         Board newBoard = board;
@@ -65,7 +70,7 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
         if (breakLoop) break;
     }
 
-    insertMemoEntry(entry, key, score, horizon, originalAlpha, beta);
+    insertMemoEntry(entry, key, score, depth, originalAlpha, beta);
     return score;
 }
 
@@ -76,11 +81,11 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
     uint64_t hash = hashBoard(board);
     uint32_t slot = hash & MEMO_SLOT_MASK;
     uint16_t key = static_cast<uint16_t>(hash >> MEMO_BITS);
-    uint8_t horizon = player.turn + (player.maxDepth - depth);
     MemoEntry& entry = player.memo[slot];
 
-    uint8_t slotHorizon = getMemoHorizon(entry);
-    if (horizon < slotHorizon && entry.key == key) {
+    // A non-zero score is a proven win or loss, which no deeper search can change
+    uint8_t slotDepth = getMemoDepth(entry);
+    if (slotDepth != 0 && entry.key == key && (slotDepth >= depth || entry.score != 0)) {
         int8_t score = entry.score;
         uint8_t flag = getMemoFlag(entry);
 
@@ -100,7 +105,7 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
 
     // Red moved into this node, so a red win here is a loss for yellow
     if (containsWin(board.redPieces)) {
-        return -(MAX_SCORE - horizon);
+        return -(MAX_SCORE - (player.turn + (player.maxDepth - depth)));
     }
 
     if (depth == 0 || isBoardFull(board)) {
@@ -108,7 +113,9 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
     }
 
     int8_t score = MIN_SCORE;
-    for (uint8_t c = 0; c < 7; ++c) {
+    for (uint8_t i = 0; i < 7; ++i) {
+        uint8_t c = COL_SEARCH_ORDER[i];
+
         if (isColumnFull(board, c)) continue;
 
         Board newBoard = board;
@@ -129,14 +136,16 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
         if (breakLoop) break;
     }
 
-    insertMemoEntry(entry, key, score, horizon, originalAlpha, beta);
+    insertMemoEntry(entry, key, score, depth, originalAlpha, beta);
     return score;
 }
 
 
 uint8_t chooseColumn(const Player& player, const Board& board) {
     int8_t scores[7];
-    for (uint8_t c = 0; c < 7; ++c) {
+    for (uint8_t i = 0; i < 7; ++i) {
+        uint8_t c = COL_SEARCH_ORDER[i];
+
         if (isColumnFull(board, c)) {
             scores[c] = MIN_SCORE;
         } else {

@@ -7,7 +7,7 @@
 #define MEMO_BITS 21
 #define MEMO_SLOT_MASK 0x001FFFFF
 
-#define HORIZON_MASK 0x3F
+#define DEPTH_MASK 0x3F
 #define FLAG_MASK 0xC0
 
 #define MEMO_FLAG_EXACT 0x00
@@ -27,19 +27,19 @@ struct MemoEntry {
     // Score is between -42 and +42
     int8_t score;
 
-    // The Alpha-beta pruning flag and horizon are packed together into 1 byte
-    // Horizon takes up the first 6 bits while the flag is the back 2
-    uint8_t flagAndHorizon = 0;
+    // The Alpha-beta pruning flag and depth are packed together into 1 byte
+    // Depth takes up the first 6 bits while the flag is the back 2
+    uint8_t flagAndDepth = 0;
 };
 
 
-inline uint8_t getMemoHorizon(const MemoEntry& entry) {
-    return entry.flagAndHorizon & HORIZON_MASK;
+inline uint8_t getMemoDepth(const MemoEntry& entry) {
+    return entry.flagAndDepth & DEPTH_MASK;
 }
 
 
 inline uint8_t getMemoFlag(const MemoEntry& entry) {
-    return entry.flagAndHorizon & FLAG_MASK;
+    return entry.flagAndDepth & FLAG_MASK;
 }
 
 
@@ -48,7 +48,7 @@ void resetMemo(MemoEntry* memo);
 void freeMemo(MemoEntry* memo);
 
 inline bool isSlotInitialized(MemoEntry* memo, uint32_t slot) {
-    return getMemoHorizon(memo[slot]) != 0;
+    return getMemoDepth(memo[slot]) != 0;
 }
 
 bool insertMemoEntry(MemoEntry& entry, uint16_t key, int8_t score, uint8_t depth, int8_t alpha, int8_t beta);
