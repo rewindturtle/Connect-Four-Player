@@ -10,8 +10,13 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
 
 
 int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta) {
+    if (containsWin(getYellowPieces(board))) {
+        return -(MAX_SCORE - __builtin_popcountll(board.allPieces));
+    } else if (depth == 0 || isBoardFull(board)) {
+        return 0;
+    }
+    
     int8_t originalAlpha = alpha;
-
     uint64_t hash = hashBoard(board);
     uint32_t slot = hash & MEMO_SLOT_MASK;
     uint16_t key = (hash >> MEMO_BITS) & 0xFFFF;
@@ -37,15 +42,6 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
         }
     }
 
-    // Yellow moved into this node, so a yellow win here is a loss for red
-    if (containsWin(getYellowPieces(board))) {
-        return -(MAX_SCORE - __builtin_popcountll(board.allPieces));
-    }
-
-    if (depth == 0 || isBoardFull(board)) {
-        return 0;
-    }
-
     int8_t score = MIN_SCORE;
     for (uint8_t i = 0; i < 7; ++i) {
         uint8_t c = COL_SEARCH_ORDER[i];
@@ -69,15 +65,19 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
     }
 
     earlyBreak:
-
     insertMemoEntry(entry, key, score, depth, originalAlpha, beta);
     return score;
 }
 
 
 int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta) {
-    int8_t originalAlpha = alpha;
+    if (containsWin(board.redPieces)) {
+        return -(MAX_SCORE - __builtin_popcountll(board.allPieces));
+    } else if (depth == 0 || isBoardFull(board)) {
+        return 0;
+    }
 
+    int8_t originalAlpha = alpha;
     uint64_t hash = hashBoard(board);
     uint32_t slot = hash & MEMO_SLOT_MASK;
     uint16_t key = static_cast<uint16_t>(hash >> MEMO_BITS);
@@ -103,15 +103,6 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
         }
     }
 
-    // Red moved into this node, so a red win here is a loss for yellow
-    if (containsWin(board.redPieces)) {
-        return -(MAX_SCORE - __builtin_popcountll(board.allPieces));
-    }
-
-    if (depth == 0 || isBoardFull(board)) {
-        return 0;
-    }
-
     int8_t score = MIN_SCORE;
     for (uint8_t i = 0; i < 7; ++i) {
         uint8_t c = COL_SEARCH_ORDER[i];
@@ -121,6 +112,7 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
         Board newBoard = board;
         placeYellowPiece(newBoard, c);
         int8_t newScore = -negaMaxRed(newBoard, player, depth - 1, -beta, -alpha);
+        if (player.forceStop) return 0;
 
         if (newScore > score) {
             score = newScore;
@@ -134,7 +126,6 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
     }
 
     earlyBreak:
-
     insertMemoEntry(entry, key, score, depth, originalAlpha, beta);
     return score;
 }
