@@ -10,11 +10,12 @@ struct Player {
     uint8_t maxDepth = 4;
     uint8_t turn = 0;
     bool isRed = true;
-    bool forceStop = false;
+    volatile bool forceStop = false;
 };
 
 
 uint8_t chooseColumn(const Player& player, const Board& board);
+void idleSearch(const Player& player, const Board& board);
 
 
 #endif // PLAYER_H

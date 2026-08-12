@@ -39,7 +39,7 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
 
     // Yellow moved into this node, so a yellow win here is a loss for red
     if (containsWin(getYellowPieces(board))) {
-        return -(MAX_SCORE - (player.turn + (player.maxDepth - depth)));
+        return -(MAX_SCORE - __builtin_popcountll(board.allPieces));
     }
 
     if (depth == 0 || isBoardFull(board)) {
@@ -55,7 +55,8 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
         Board newBoard = board;
         placeRedPiece(newBoard, c);
         int8_t newScore = -negaMaxYellow(newBoard, player, depth - 1, -beta, -alpha);
-        
+        if (player.forceStop) return 0;
+
         bool breakLoop = false;
         if (newScore > score) {
             score = newScore;
@@ -105,7 +106,7 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
 
     // Red moved into this node, so a red win here is a loss for yellow
     if (containsWin(board.redPieces)) {
-        return -(MAX_SCORE - (player.turn + (player.maxDepth - depth)));
+        return -(MAX_SCORE - __builtin_popcountll(board.allPieces));
     }
 
     if (depth == 0 || isBoardFull(board)) {
@@ -121,7 +122,7 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
         Board newBoard = board;
         placeYellowPiece(newBoard, c);
         int8_t newScore = -negaMaxRed(newBoard, player, depth - 1, -beta, -alpha);
-        
+
         bool breakLoop = false;
         if (newScore > score) {
             score = newScore;
@@ -182,4 +183,16 @@ uint8_t chooseColumn(const Player& player, const Board& board) {
 
     int idx = rand() % static_cast<int>(numCols);
     return cols[idx];
+}
+
+
+void idleSearch(const Player& player, const Board& board) {
+    uint8_t maxSearchDepth = 42 - player.turn;
+    for (uint8_t i = 1; i <= maxSearchDepth && !player.forceStop; ++i) {
+        if (player.isRed) {
+            negaMaxYellow(board, player, i, MIN_SCORE, MAX_SCORE);
+        } else {
+            negaMaxRed(board, player, i, MIN_SCORE, MAX_SCORE);
+        }
+    }
 }

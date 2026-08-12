@@ -33,7 +33,7 @@ void freeMemo(MemoEntry* memo) {
 bool insertMemoEntry(MemoEntry& entry, uint16_t key, int8_t score, uint8_t depth, int8_t alpha, int8_t beta) {
     // Deeper in the tree (smaller depth) wins the slot; equal depths overwrite
     uint8_t entryDepth = getMemoDepth(entry);
-    if (entryDepth != 0 && depth > entryDepth) return false;
+    if (entryDepth != 0 && entry.key != key && depth > entryDepth) return false;
 
     entry.key = key;
     entry.score = score;
