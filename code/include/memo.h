@@ -10,6 +10,10 @@
 #define DEPTH_MASK 0x3F
 #define FLAG_MASK 0xC0
 
+// Marks a preloaded book entry. Above any real search depth, so the probe
+// always accepts it, and insertMemoEntry always lets a real result replace it
+#define BOOK_DEPTH DEPTH_MASK
+
 #define MEMO_FLAG_EXACT 0x00
 #define MEMO_FLAG_LB 0x40
 #define MEMO_FLAG_UB 0x80

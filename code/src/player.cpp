@@ -405,10 +405,10 @@ static void scoreColumns(const Player& player, const Board& board, uint8_t maxDe
         Board newBoard = board;
         if (player.isRed) {
             placeRedPiece(newBoard, c);
-            scores[c] = -negaMaxYellow(newBoard, player, maxDepth - 1, MIN_SCORE, INT8_MAX);
+            scores[c] = -negaMaxYellow(newBoard, player, maxDepth - 1, MIN_SCORE, MAX_SCORE);
         } else {
             placeYellowPiece(newBoard, c);
-            scores[c] = -negaMaxRed(newBoard, player, maxDepth - 1, MIN_SCORE, INT8_MAX);
+            scores[c] = -negaMaxRed(newBoard, player, maxDepth - 1, MIN_SCORE, MAX_SCORE);
         }
     }
 }

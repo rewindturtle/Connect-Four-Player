@@ -33,7 +33,9 @@ void freeMemo(MemoEntry* memo) {
 bool insertMemoEntry(MemoEntry& entry, uint16_t key, int8_t score, uint8_t depth, int8_t alpha, int8_t beta) {
     // More lookahead wins the slot
     // An empty slot has a depth of 0 and always loses
-    if (depth < getMemoDepth(entry)) return false;
+    // A loaded book entry always loses to a real search
+    uint8_t entryDepth = getMemoDepth(entry);
+    if (entryDepth != BOOK_DEPTH && depth < entryDepth) return false;
 
     entry.key = key;
     entry.score = score;
