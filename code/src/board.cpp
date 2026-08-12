@@ -39,18 +39,17 @@ void placeYellowPiece(Board& board, uint8_t col) {
 }
 
 
-inline static uint64_t murmur3_64(uint64_t key) {
+inline static uint64_t murmur3_64(uint64_t key, uint64_t seed) {
+    key ^= seed;
 	key ^= key >> 33;
-	key *= 0xff51afd7ed558ccd;
+	key *= 0xFF51AFD7ED558CCD;
 	key ^= key >> 33;
-	key *= 0xc4ceb9fe1a85ec53;
+	key *= 0xC4CEB9FE1A85EC53;
 	key ^= key >> 33;
 	return key;
 }
 
 
 uint64_t hashBoard(const Board& board) {
-    uint64_t hash = board.allPieces;
-    hash ^= murmur3_64(board.redPieces);
-    return murmur3_64(hash);
+    return murmur3_64(board.redPieces, 0x9E3779B97F4A7C15ULL * board.allPieces);
 }
