@@ -9,13 +9,14 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
 int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta) {
     int8_t originalAlpha = alpha;
 
-    uint32_t hash = hashBoard(board);
+    uint64_t hash = hashBoard(board);
     uint32_t slot = hash & MEMO_SLOT_MASK;
-    uint16_t key = static_cast<uint16_t>(hash >> MEMO_BITS);
+    uint16_t key = (hash >> MEMO_BITS) & 0xFFFF;
+    uint8_t horizon = player.turn + (player.maxDepth - depth);
     MemoEntry& entry = player.memo[slot];
 
-    uint8_t slotDepth = getMemoDepth(entry);
-    if (slotDepth != 0 && entry.key == key && slotDepth >= depth) {
+    uint8_t slotHorizon = getMemoHorizon(entry);
+    if (horizon < slotHorizon && entry.key == key) {
         int8_t score = entry.score;
         uint8_t flag = getMemoFlag(entry);
 
@@ -35,15 +36,11 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
 
     // Yellow moved into this node, so a yellow win here is a loss for red
     if (containsWin(getYellowPieces(board))) {
-        return -(MAX_SCORE - (player.turn + (player.maxDepth - depth)));
+        return -(MAX_SCORE - horizon);
     }
 
-    if (isBoardFull(board)) {
+    if (depth == 0 || isBoardFull(board)) {
         return 0;
-    }
-
-    if (depth == 0) {
-        return player.scoreFunc(board, player);
     }
 
     int8_t score = MIN_SCORE;
@@ -68,7 +65,7 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
         if (breakLoop) break;
     }
 
-    insertMemoEntry(entry, key, score, depth, originalAlpha, beta);
+    insertMemoEntry(entry, key, score, horizon, originalAlpha, beta);
     return score;
 }
 
@@ -76,13 +73,14 @@ int8_t negaMaxRed(const Board& board, const Player& player, uint8_t depth, int8_
 int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta) {
     int8_t originalAlpha = alpha;
 
-    uint32_t hash = hashBoard(board);
+    uint64_t hash = hashBoard(board);
     uint32_t slot = hash & MEMO_SLOT_MASK;
     uint16_t key = static_cast<uint16_t>(hash >> MEMO_BITS);
+    uint8_t horizon = player.turn + (player.maxDepth - depth);
     MemoEntry& entry = player.memo[slot];
 
-    uint8_t slotDepth = getMemoDepth(entry);
-    if (slotDepth != 0 && entry.key == key && slotDepth >= depth) {
+    uint8_t slotHorizon = getMemoHorizon(entry);
+    if (horizon < slotHorizon && entry.key == key) {
         int8_t score = entry.score;
         uint8_t flag = getMemoFlag(entry);
 
@@ -102,15 +100,11 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
 
     // Red moved into this node, so a red win here is a loss for yellow
     if (containsWin(board.redPieces)) {
-        return -(MAX_SCORE - (player.turn + (player.maxDepth - depth)));
+        return -(MAX_SCORE - horizon);
     }
 
-    if (isBoardFull(board)) {
+    if (depth == 0 || isBoardFull(board)) {
         return 0;
-    }
-
-    if (depth == 0) {
-        return -player.scoreFunc(board, player);
     }
 
     int8_t score = MIN_SCORE;
@@ -135,7 +129,7 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
         if (breakLoop) break;
     }
 
-    insertMemoEntry(entry, key, score, depth, originalAlpha, beta);
+    insertMemoEntry(entry, key, score, horizon, originalAlpha, beta);
     return score;
 }
 
@@ -163,7 +157,6 @@ uint8_t chooseColumn(const Player& player, const Board& board) {
     for (uint8_t c = 0; c < 7; ++c) {
         if (scores[c] > highestScore) {
             highestScore = scores[c];
-
             cols[0] = c;
             numCols = 1;
         } else if (scores[c] == highestScore) {

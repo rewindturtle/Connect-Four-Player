@@ -47,6 +47,6 @@ inline bool isBoardFull(const Board& board) {
 bool containsWin(uint64_t pieces);
 void placeRedPiece(Board& board, uint8_t col);
 void placeYellowPiece(Board& board, uint8_t col);
-uint32_t hashBoard(const Board& board);
+uint64_t hashBoard(const Board& board);
 
 #endif // BOARD_H
