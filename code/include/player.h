@@ -13,6 +13,7 @@
 #define SPREADER_PLAY_STYLE 6
 #define PACIFIST_PLAY_STYLE 7
 #define COPYCAT_PLAY_STYLE 8
+#define TRAP_PLAY_STYLE 9
 
 #define NO_COLUMN 0xFF
 
@@ -21,10 +22,12 @@ struct Player {
     MemoEntry* memo = nullptr;
     float mistakeProb = 0.2f;
     uint8_t maxDepth = 4;
+    uint8_t panicDepth = 8;
     uint8_t turn = 0;
     uint8_t playStyle = STANDARD_PLAY_STYLE;
     uint8_t lastOpponentColumn = NO_COLUMN;
     bool isRed = true;
+    bool canPanic = false;
     volatile bool forceStop = false;
 };
 

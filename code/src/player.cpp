@@ -330,23 +330,106 @@ static uint8_t chooseColumnCopycatStyle(const Player& player, const Board& board
 }
 
 
-uint8_t chooseColumn(const Player& player, const Board& board) {
-    int8_t scores[7];
+// Counts opponent replies to col that are not already losing for the opponent
+static uint8_t countSafeReplies(const Player& player, const Board& board, uint8_t col, uint8_t depth) {
+    Board afterMove = board;
+    if (player.isRed) {
+        placeRedPiece(afterMove, col);
+    } else {
+        placeYellowPiece(afterMove, col);
+    }
+
+    uint8_t safeReplies = 0;
+    for (uint8_t r = 0; r < 7; ++r) {
+        if (isColumnFull(afterMove, r)) continue;
+
+        Board afterReply = afterMove;
+        int8_t score;
+        if (player.isRed) {
+            placeYellowPiece(afterReply, r);
+            score = negaMaxRed(afterReply, player, depth, MIN_SCORE, MAX_SCORE);
+        } else {
+            placeRedPiece(afterReply, r);
+            score = negaMaxYellow(afterReply, player, depth, MIN_SCORE, MAX_SCORE);
+        }
+
+        if (score <= 0) {
+            ++safeReplies;
+        }
+    }
+
+    return safeReplies;
+}
+
+
+static uint8_t chooseColumnTrapStyle(const Player& player, const Board& board, const int8_t (&scores)[7]) {
+    uint8_t cols[7];
+    uint8_t numCols = collectBestColumns(scores, cols);
+
+    if (numCols == 0) return 0;
+
+    // A forced win or loss is already decided, so only break neutral ties
+    if (scores[cols[0]] != 0) return chooseColumnStandardStyle(player, board, scores);
+
+    uint8_t replyDepth = player.maxDepth > 2 ? player.maxDepth - 2 : 1;
+
+    uint8_t picked[7];
+    uint8_t numPicked = 0;
+    uint8_t fewestSafe = 0;
+    for (uint8_t i = 0; i < numCols; ++i) {
+        uint8_t safeReplies = countSafeReplies(player, board, cols[i], replyDepth);
+
+        if (numPicked == 0 || safeReplies < fewestSafe) {
+            fewestSafe = safeReplies;
+            picked[0] = cols[i];
+            numPicked = 1;
+        } else if (safeReplies == fewestSafe) {
+            picked[numPicked] = cols[i];
+            ++numPicked;
+        }
+    }
+
+    return pickRandomColumn(picked, numPicked);
+}
+
+
+static void scoreColumns(const Player& player, const Board& board, uint8_t maxDepth, int8_t (&scores)[7]) {
     for (uint8_t i = 0; i < 7; ++i) {
         uint8_t c = COL_SEARCH_ORDER[i];
 
         if (isColumnFull(board, c)) {
             scores[c] = MIN_SCORE;
-        } else {
-            Board newBoard = board;
-            if (player.isRed) {
-                placeRedPiece(newBoard, c);
-                scores[c] = -negaMaxYellow(newBoard, player, player.maxDepth - 1, MIN_SCORE, INT8_MAX);
-            } else {
-                placeYellowPiece(newBoard, c);
-                scores[c] = -negaMaxRed(newBoard, player, player.maxDepth - 1, MIN_SCORE, INT8_MAX);
-            }
+            continue;
         }
+
+        Board newBoard = board;
+        if (player.isRed) {
+            placeRedPiece(newBoard, c);
+            scores[c] = -negaMaxYellow(newBoard, player, maxDepth - 1, MIN_SCORE, INT8_MAX);
+        } else {
+            placeYellowPiece(newBoard, c);
+            scores[c] = -negaMaxRed(newBoard, player, maxDepth - 1, MIN_SCORE, INT8_MAX);
+        }
+    }
+}
+
+
+// A visible loss is worth a second, deeper look
+static bool isThreatened(const int8_t (&scores)[7]) {
+    for (uint8_t c = 0; c < 7; ++c) {
+        if (scores[c] < 0 && scores[c] != MIN_SCORE) return true;
+    }
+
+    return false;
+}
+
+
+uint8_t chooseColumn(const Player& player, const Board& board) {
+    int8_t scores[7];
+    scoreColumns(player, board, player.maxDepth, scores);
+
+    if (player.canPanic && isThreatened(scores)) {
+        scoreColumns(player, board, player.panicDepth, scores);
     }
 
     switch (player.playStyle) {
@@ -366,6 +449,8 @@ uint8_t chooseColumn(const Player& player, const Board& board) {
             return chooseColumnPacifistStyle(player, board, scores);
         case COPYCAT_PLAY_STYLE:
             return chooseColumnCopycatStyle(player, board, scores);
+        case TRAP_PLAY_STYLE:
+            return chooseColumnTrapStyle(player, board, scores);
         default:
             return chooseColumnStandardStyle(player, board, scores);
     }
