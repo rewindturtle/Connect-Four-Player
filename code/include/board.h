@@ -40,6 +40,11 @@ inline bool isColumnFull(const Board& board, uint8_t col) {
     return (board.allPieces & mask) != 0;
 }
 
+inline uint8_t getColumnHeight(const Board& board, uint8_t col) {
+    uint64_t mask = COLUMN_MASK << (7 * col);
+    return static_cast<uint8_t>(__builtin_popcountll(board.allPieces & mask));
+}
+
 inline bool isBoardFull(const Board& board) {
     return (board.allPieces & BOARD_MASK) == BOARD_MASK;
 }
