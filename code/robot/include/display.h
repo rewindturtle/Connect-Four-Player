@@ -1,5 +1,5 @@
-#ifndef UI_H
-#define UI_H
+#ifndef DISPLAY_H
+#define DISPLAY_H
 
 enum ScreenState {
     SCREEN_NULL,
@@ -7,8 +7,8 @@ enum ScreenState {
     SCREEN_SETTINGS_MENU
 };
 
-void initUI();
-void drawUI();
+void initDisplay();
+void drawDisplay();
 void setScreen(ScreenState state);
 
-#endif // UI_H
+#endif // DISPLAY_H

@@ -1,11 +1,11 @@
-#include "ui.h"
+#include "display.h"
 
 
 void setup() {
-    initUI();
+    initDisplay();
 }
 
 
 void loop() {
-    drawUI();
+    drawDisplay();
 }
