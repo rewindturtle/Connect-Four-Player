@@ -349,9 +349,20 @@ static void scoreRootColumns(const Board& board, SearchMemo& memo, uint8_t maxDe
         Board newBoard = board;
         if (isRed) {
             placeRedPiece(newBoard, c);
+
+            // If a board contains a win, it will not be viewed during normal gameplay
+            // so we skip it
+            if (containsWin(newBoard.redPieces) || containsWin(getYellowPieces(newBoard))) {
+                continue;
+            }
+
             negaMaxYellow(newBoard, memo, maxDepth - 1, MIN_SCORE, INT8_MAX);
         } else {
             placeYellowPiece(newBoard, c);
+            if (containsWin(newBoard.redPieces) || containsWin(getYellowPieces(newBoard))) {
+                continue;
+            }
+
             negaMaxRed(newBoard, memo, maxDepth - 1, MIN_SCORE, INT8_MAX);
         }
     }

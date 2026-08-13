@@ -54,5 +54,13 @@ dkms.conf
 # debug information files
 *.dwo
 
+# platform.io
+code/robot/.vscode.pio
+code/robot/.vscode/.browse.c_cpp.db*
+code/robot/.vscode/c_cpp_properties.json
+code/robot/.vscode/launch.json
+code/robot/.vscode/ipch
+
 # build directories
-book/build/*
+code/book/build/*
+code/robot/build/*
