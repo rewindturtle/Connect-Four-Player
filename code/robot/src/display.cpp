@@ -1,7 +1,7 @@
-#include "ui.h"
+#include "display.h"
 
 #define LGFX_AUTODETECT
-#include <LovyanGFX.h>
+#include <LovyanGFX.hpp>
 
 #ifdef C4_DESKTOP
     static LGFX display(480, 320, 2, 2);
@@ -10,6 +10,7 @@
 #endif
 
 static LGFX_Sprite canvas(&display);
+static LGFX_Sprite face(&display);
 
 #define COLOUR_BG 0x0862
 #define COLOUR_GRID 0x1988
@@ -32,6 +33,14 @@ static LGFX_Sprite canvas(&display);
 
 static ScreenState screenState = SCREEN_MAIN_MENU;
 static ScreenState previousScreenState = SCREEN_NULL;
+
+
+enum FaceBlinkState {
+    BLINK_IDLE,
+    BLINK_CLOSING,
+    BLINK_CLOSED,
+    BLINK_OPENING
+};
 
 
 static void drawText(const char* text, int centerX, int y, int spacing) {
@@ -87,6 +96,12 @@ void initUI() {
         canvas.setPsram(true);
     #endif
     canvas.createSprite(480, 320);
+
+    face.setColorDepth(16);
+    #ifndef C4_DESKTOP
+        face.setPsram(true);
+    #endif
+    face.createSprite(480, 320);
 }
 
 
