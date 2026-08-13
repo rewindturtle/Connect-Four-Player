@@ -1,4 +1,4 @@
-#include <Arduino.h>
+#include "platform.h"
 #include <time.h>
 #include <stdlib.h>
 

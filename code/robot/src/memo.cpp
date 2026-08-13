@@ -1,16 +1,17 @@
 #include "memo.h"
+#include "platform.h"
+
 #include <stdlib.h>
 #include <string.h>
-#include <Arduino.h>
 
 
 
 MemoEntry* initMemo() {
-    void* mem = ps_malloc(sizeof(MemoEntry) * MEMO_SIZE);
+    void* mem = c4Allocate(sizeof(MemoEntry) * MEMO_SIZE);
     if (!mem) return nullptr;
 
+    memset(mem, 0, sizeof(MemoEntry) * MEMO_SIZE);
     MemoEntry* memo = static_cast<MemoEntry*>(mem);
-    memset(memo, 0, sizeof(MemoEntry) * MEMO_SIZE);
 
     return memo;
 }
@@ -19,7 +20,7 @@ MemoEntry* initMemo() {
 void resetMemo(MemoEntry* memo) {
     if (memo == nullptr) return;
 
-    memset(memo, 0, sizeof(MemoEntry) * MEMO_SIZE);
+    memset(static_cast<void*>(memo), 0, sizeof(MemoEntry) * MEMO_SIZE);
 }
 
 

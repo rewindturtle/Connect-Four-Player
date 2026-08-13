@@ -64,3 +64,4 @@ code/robot/.vscode/ipch
 # build directories
 code/book/build/*
 code/robot/build/*
+code/desktop/build/*

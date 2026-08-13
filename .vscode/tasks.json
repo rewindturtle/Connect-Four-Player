@@ -15,9 +15,27 @@
 			},
 			"problemMatcher": "$gcc",
 			"options": {
-				"cwd": "${workspaceFolder}/book"
+				"cwd": "${workspaceFolder}/code/book"
 			},
-			"command": "cmake -S . -B build -G 'MinGW Makefiles'; cmake --build build"
+			"command": "cmake -S . -B build -G Ninja; cmake --build build"
+		},
+		{
+			"label": "Build Desktop UI (Windows)",
+			"type": "shell",
+			"group": "build",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared",
+				"showReuseMessage": true,
+				"clear": false
+			},
+			"problemMatcher": "$gcc",
+			"options": {
+				"cwd": "${workspaceFolder}/code/desktop"
+			},
+			"command": "cmake -S . -B build -G Ninja; cmake --build build"
 		}
 	]
 }

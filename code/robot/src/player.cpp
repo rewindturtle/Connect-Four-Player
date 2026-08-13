@@ -1,5 +1,6 @@
 #include "player.h"
-#include <esp_random.h>
+#include "platform.h"
+
 #include <string.h>
 
 
@@ -137,7 +138,7 @@ int8_t negaMaxYellow(const Board& board, const Player& player, uint8_t depth, in
 
 static uint8_t pickRandomColumn(const uint8_t* cols, uint8_t numCols) {
     if (numCols == 1) return cols[0];
-    return cols[esp_random() % numCols];
+    return cols[randomU32() % numCols];
 }
 
 
@@ -207,7 +208,7 @@ static uint8_t chooseColumnMistakeStyle(const Player& player, const Board&, cons
 
     if (numBestCols == 0) return 0;
 
-    float r = static_cast<float>(1. / static_cast<double>(UINT32_MAX)) * static_cast<float>(esp_random());
+    float r = static_cast<float>(1. / static_cast<double>(UINT32_MAX)) * static_cast<float>(randomU32());
     if (numSecondBestCols != 0 && r < player.mistakeProb) {
         return pickRandomColumn(secondBestCols, numSecondBestCols);
     }
