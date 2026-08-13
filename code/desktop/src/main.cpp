@@ -1,10 +1,8 @@
+#include "main.h"
+
 #include <lgfx/v1/platforms/sdl/Panel_sdl.hpp>
 
 #ifdef SDL_h_
-
-void setup();
-void loop();
-
 
 static int desktopUI(bool* running) {
     setup();

@@ -63,7 +63,8 @@ set(SHARED_SOURCES
     ${ROBOT_DIR}/src/memo.cpp
     ${ROBOT_DIR}/src/player.cpp
     ${ROBOT_DIR}/src/main.cpp
-    ${ROBOT_DIR}/src/platform.cpp)
+    ${ROBOT_DIR}/src/platform.cpp
+    ${ROBOT_DIR}/src/ui.cpp)
 
 add_executable(c4_desktop
     ${SHARED_SOURCES}
