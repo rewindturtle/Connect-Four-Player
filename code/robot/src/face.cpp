@@ -285,6 +285,14 @@ void Face::_updateClench(ClenchParams& clench, uint32_t now) {
 }
 
 
+void Face::_updateRequiresDraw() {
+    FaceSnapshot current = {_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _offset, _colour};
+
+    _requiresDraw = !(current == _previous);
+    _previous = current;
+}
+
+
 void Face::update(uint32_t now) {
     switch (_state) {
         case FACE_NEUTRAL:
@@ -306,6 +314,8 @@ void Face::update(uint32_t now) {
             _updateClench(_info.angry.clench, now);
             break;
     }
+
+    _updateRequiresDraw();
 }
 
 

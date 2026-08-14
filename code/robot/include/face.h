@@ -62,6 +62,52 @@ struct FaceOffset {
 };
 
 
+inline bool operator==(const EyeParams& a, const EyeParams& b) {
+    return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height &&
+           a.angle == b.angle && a.strokeWidth == b.strokeWidth && a.shape == b.shape;
+}
+
+
+inline bool operator==(const EyebrowParams& a, const EyebrowParams& b) {
+    return a.x1 == b.x1 && a.y1 == b.y1 && a.x2 == b.x2 && a.y2 == b.y2 && a.strokeWidth == b.strokeWidth;
+}
+
+
+inline bool operator==(const MouthParams& a, const MouthParams& b) {
+    return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height &&
+           a.curve == b.curve && a.strokeWidth == b.strokeWidth && a.shape == b.shape;
+}
+
+
+inline bool operator==(const Colour& a, const Colour& b) {
+    return a.r == b.r && a.g == b.g && a.b == b.b;
+}
+
+
+inline bool operator==(const FaceOffset& a, const FaceOffset& b) {
+    return a.x == b.x && a.y == b.y;
+}
+
+
+// Everything drawFace() reads, so a match means the rendered face is identical.
+struct FaceSnapshot {
+    EyeParams leftEye;
+    EyeParams rightEye;
+    EyebrowParams leftBrow;
+    EyebrowParams rightBrow;
+    MouthParams mouth;
+    FaceOffset offset;
+    Colour colour;
+};
+
+
+inline bool operator==(const FaceSnapshot& a, const FaceSnapshot& b) {
+    return a.leftEye == b.leftEye && a.rightEye == b.rightEye &&
+           a.leftBrow == b.leftBrow && a.rightBrow == b.rightBrow &&
+           a.mouth == b.mouth && a.offset == b.offset && a.colour == b.colour;
+}
+
+
 enum BlinkPhase : uint8_t {
     BLINK_IDLE,
     BLINK_CLOSING,
@@ -157,7 +203,10 @@ class Face {
         Colour _colour;
         FaceInfo _info;
         FaceState _state;
+        FaceSnapshot _previous = {};
+        bool _requiresDraw = true;
 
+        void _updateRequiresDraw();
         void _updateBlink(BlinkParams& blink, uint32_t now);
         void _scheduleBlink(BlinkParams& blink, uint32_t now);
         void _applyBlink(const BlinkParams& blink, uint32_t now);
@@ -172,6 +221,7 @@ class Face {
 
         void setState(FaceState state);
         inline FaceState getState() const {return _state;}
+        inline bool requiresDraw() const {return _requiresDraw;}
 
         inline const EyeParams& getLeftEyeParams() const {return _leftEye;}
         inline const EyeParams& getRightEyeParams() const {return _rightEye;}

@@ -63,6 +63,7 @@ static ScreenState previousScreenState = SCREEN_NULL;
 
 static FaceTransform faceTransform;
 static uint32_t faceRefreshTimer = 0;
+static bool faceNeedsRedraw = false;
 
 
 static uint16_t colourToRgb565(const Colour& c) {
@@ -192,6 +193,9 @@ static void drawFace(uint32_t now) {
     Face& face = Face::getFace();
     face.update(now);
 
+    if (!face.requiresDraw() && !faceNeedsRedraw) return;
+    faceNeedsRedraw = false;
+
     const FaceOffset offset = face.getOffset();
     const uint16_t colour = colourToRgb565(face.getColour());
 
@@ -214,6 +218,8 @@ static void drawFace(uint32_t now) {
 static void showFace(FaceState state, float x, float y) {
     Face::getFace().setState(state);
     faceTransform = {x, y, 0.f, 1.f, 1.f, true};
+    // The screen repaint underneath wipes the face, and the face may be idle.
+    faceNeedsRedraw = true;
 }
 
 
