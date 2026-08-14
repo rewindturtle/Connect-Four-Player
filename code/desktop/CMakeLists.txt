@@ -65,8 +65,7 @@ set(SHARED_SOURCES
     ${ROBOT_DIR}/src/main.cpp
     ${ROBOT_DIR}/src/platform.cpp
     ${ROBOT_DIR}/src/display.cpp
-    ${ROBOT_DIR}/src/face.cpp
-    )
+    ${ROBOT_DIR}/src/face.cpp)
 
 add_executable(c4_desktop
     ${SHARED_SOURCES}

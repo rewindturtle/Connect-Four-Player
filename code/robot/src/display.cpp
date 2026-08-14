@@ -2,19 +2,26 @@
 #include "face.h"
 #include "platform.h"
 
+#include <math.h>
+#include <string.h>
+
 #define LGFX_AUTODETECT
 #include <LovyanGFX.hpp>
 
+#define SCREEN_WIDTH 480
+#define SCREEN_HEIGHT 320
+
 #ifdef C4_DESKTOP
-    static LGFX display(480, 320, 2, 2);
+    static LGFX display(SCREEN_WIDTH, SCREEN_HEIGHT, 2, 2);
 #else
     static LGFX display;
 #endif
 
 static LGFX_Sprite canvas(&display);
 static LGFX_Sprite faceSprite(&display);
+static LGFX_Sprite faceFrame(&display);
 
-#define DEG2RAD(d) (static_cast<float>(M_PI / 180.) * (d))
+static constexpr float DEG_TO_RAD = 0.01745329251f;
 
 #define COLOUR_BG 0x0862
 #define COLOUR_GRID 0x1988
@@ -28,6 +35,9 @@ static LGFX_Sprite faceSprite(&display);
 
 #define FACE_SPRITE_W 160
 #define FACE_SPRITE_H 150
+// Sized to the face sprite's diagonal so a rotated face still fits inside.
+#define FACE_FRAME_SIZE 220
+#define FACE_REFRESH_RATE_MS 50
 
 #define BUTTON_WIDTH 160
 #define BUTTON_HEIGHT 52
@@ -38,19 +48,21 @@ static LGFX_Sprite faceSprite(&display);
 #define MAIN_MENU_BUTTON_Y 210
 
 
+struct FaceTransform {
+    float x = 0.f;
+    float y = 0.f;
+    float rotation = 0.f;
+    float scaleX = 1.f;
+    float scaleY = 1.f;
+    bool visible = false;
+};
+
+
 static ScreenState screenState = SCREEN_MAIN_MENU;
 static ScreenState previousScreenState = SCREEN_NULL;
 
-
-#define FACE_REFRESH_RATE_MS 50
+static FaceTransform faceTransform;
 static uint32_t faceRefreshTimer = 0;
-
-static float faceRotation = 0.f;
-static float faceScaleX = 1.f;
-static float faceScaleY = 1.f;
-static float faceX = 0.f;
-static float faceY = 0.f;
-static bool faceVisible = false;
 
 
 static uint16_t colourToRgb565(const Colour& c) {
@@ -76,8 +88,8 @@ static void drawText(const char* text, int centerX, int y, int spacing) {
 }
 
 
-static void drawRotatedRect(LovyanGFX& gfx, float cx, float cy, float w, float h, float angleDeg, uint16_t col) {
-    float rad = DEG2RAD(angleDeg);
+static void drawRotatedRect(LovyanGFX& gfx, float cx, float cy, float w, float h, float angleDeg, uint16_t colour) {
+    float rad = angleDeg * DEG_TO_RAD;
     float cosA = cosf(rad);
     float sinA = sinf(rad);
     float hw = 0.5f * w;
@@ -97,12 +109,12 @@ static void drawRotatedRect(LovyanGFX& gfx, float cx, float cy, float w, float h
         py[i] = static_cast<int>(cy + corners[i][0] * sinA + corners[i][1] * cosA);
     }
 
-    gfx.fillTriangle(px[0], py[0], px[1], py[1], px[2], py[2], col);
-    gfx.fillTriangle(px[0], py[0], px[2], py[2], px[3], py[3], col);
+    gfx.fillTriangle(px[0], py[0], px[1], py[1], px[2], py[2], colour);
+    gfx.fillTriangle(px[0], py[0], px[2], py[2], px[3], py[3], colour);
 }
 
 
-static void drawThickBezier(LovyanGFX& gfx, float x0, float y0, float cx, float cy, float x1, float y1, float thickness, uint16_t col) {
+static void drawThickBezier(LovyanGFX& gfx, float x0, float y0, float cx, float cy, float x1, float y1, float thickness, uint16_t colour) {
     int half = static_cast<int>(0.5f * thickness);
     int x0i = static_cast<int>(x0);
     int y0i = static_cast<int>(y0);
@@ -112,92 +124,96 @@ static void drawThickBezier(LovyanGFX& gfx, float x0, float y0, float cx, float 
     int y1i = static_cast<int>(y1);
 
     for (int i = -half; i <= half; ++i) {
-        gfx.drawBezier(x0i, y0i + i, cxi, cyi + i, x1i, y1i + i, col);
+        gfx.drawBezier(x0i, y0i + i, cxi, cyi + i, x1i, y1i + i, colour);
     }
 }
 
 
-static void drawEye(LovyanGFX& gfx, const EyeParams& eye, float ox, float oy, uint16_t col) {
-    float ex = eye.x + ox;
-    float ey = eye.y + oy;
+static void drawEye(LovyanGFX& gfx, const EyeParams& eye, const FaceOffset& offset, uint16_t colour) {
+    float ex = eye.x + offset.x;
+    float ey = eye.y + offset.y;
 
     switch (eye.shape) {
         case EYE_RECT:
             if (eye.angle == 0.f) {
                 gfx.fillRect(static_cast<int>(ex - 0.5f * eye.width), static_cast<int>(ey - 0.5f * eye.height), static_cast<int>(eye.width),
-                             static_cast<int>(eye.height), col);
+                             static_cast<int>(eye.height), colour);
             } else {
-                drawRotatedRect(gfx, ex, ey, eye.width, eye.height, eye.angle, col);
+                drawRotatedRect(gfx, ex, ey, eye.width, eye.height, eye.angle, colour);
             }
             break;
         case EYE_ARC:
-            drawThickBezier(gfx, ex - 0.5f * eye.width, ey, ex, ey - eye.height, ex + 0.5f * eye.width, ey, eye.strokeWidth, col);
+            drawThickBezier(gfx, ex - 0.5f * eye.width, ey, ex, ey - eye.height, ex + 0.5f * eye.width, ey, eye.strokeWidth, colour);
             break;
     }
 }
 
 
-static void drawEyebrow(LovyanGFX& gfx, const EyebrowParams& eyebrow, float ox, float oy, uint16_t col) {
+static void drawEyebrow(LovyanGFX& gfx, const EyebrowParams& eyebrow, const FaceOffset& offset, uint16_t colour) {
     if (eyebrow.strokeWidth < 1.f) return;
 
-    gfx.drawWideLine(eyebrow.x1 + ox, eyebrow.y1 + oy, eyebrow.x2 + ox, eyebrow.y2 + oy, eyebrow.strokeWidth, col);
+    float x1 = eyebrow.x1 + offset.x;
+    float y1 = eyebrow.y1 + offset.y;
+    float x2 = eyebrow.x2 + offset.x;
+    float y2 = eyebrow.y2 + offset.y;
+    float dx = x2 - x1;
+    float dy = y2 - y1;
+    float length = sqrtf(dx * dx + dy * dy);
+    if (length < 1.f) return;
+
+    drawRotatedRect(gfx, 0.5f * (x1 + x2), 0.5f * (y1 + y2), length, eyebrow.strokeWidth, atan2f(dy, dx) / DEG_TO_RAD, colour);
 }
 
 
-static void drawMouth(LovyanGFX& gfx, const MouthParams& mouth, float ox, float oy, uint16_t col) {
-    float mx = mouth.x + ox;
-    float my = mouth.y + oy;
+static void drawMouth(LovyanGFX& gfx, const MouthParams& mouth, const FaceOffset& offset, uint16_t colour) {
+    float mx = mouth.x + offset.x;
+    float my = mouth.y + offset.y;
     float hw = 0.5f * mouth.width;
 
     switch (mouth.shape) {
         case MOUTH_BAR:
             gfx.fillRect(static_cast<int>(mx - hw), static_cast<int>(my - 0.5f * mouth.height), static_cast<int>(mouth.width),
-                         static_cast<int>(mouth.height), col);
+                         static_cast<int>(mouth.height), colour);
             break;
         case MOUTH_CURVE:
-            drawThickBezier(gfx, mx - hw, my, mx, my + mouth.curve, mx + hw, my, mouth.strokeWidth, col);
+            drawThickBezier(gfx, mx - hw, my, mx, my + mouth.curve, mx + hw, my, mouth.strokeWidth, colour);
             break;
         case MOUTH_D_OUTLINE: {
             int half = static_cast<int>(0.5f * mouth.strokeWidth);
-            int x = static_cast<int>(mx - hw);
-            int y = static_cast<int>(my);
-            int w = static_cast<int>(mouth.width);
-            for (int i = -half; i <= half; i++) {
-                gfx.drawFastHLine(x, y + i, w , col);
-            }
-
-            drawThickBezier(gfx, mx - hw, my, mx, my + mouth.height, mx + hw, my, mouth.strokeWidth, col);
+            gfx.fillRect(static_cast<int>(mx - hw), static_cast<int>(my) - half, static_cast<int>(mouth.width), 2 * half + 1, colour);
+            drawThickBezier(gfx, mx - hw, my, mx, my + mouth.height, mx + hw, my, mouth.strokeWidth, colour);
             break;
         }
     }
 }
 
 
-static void drawFace() {
-    uint32_t now = getNow();
-    if (now < faceRefreshTimer) return;
-    faceRefreshTimer = now + FACE_REFRESH_RATE_MS;
-
+static void drawFace(uint32_t now) {
     Face& face = Face::getFace();
     face.update(now);
 
-    FaceOffset offset = face.getOffset();
-    uint16_t col = colourToRgb565(face.getColour());
+    const FaceOffset offset = face.getOffset();
+    const uint16_t colour = colourToRgb565(face.getColour());
 
     faceSprite.fillSprite(COLOUR_BG);
+    drawEyebrow(faceSprite, face.getLeftBrowParams(), offset, colour);
+    drawEyebrow(faceSprite, face.getRightBrowParams(), offset, colour);
+    drawEye(faceSprite, face.getLeftEyeParams(), offset, colour);
+    drawEye(faceSprite, face.getRightEyeParams(), offset, colour);
+    drawMouth(faceSprite, face.getMouthParams(), offset, colour);
 
-    drawEyebrow(faceSprite, face.getLeftBrowParams(), offset.x, offset.y, col);
-    drawEyebrow(faceSprite, face.getRightBrowParams(), offset.x, offset.y, col);
-    drawEye(faceSprite, face.getLeftEyeParams(), offset.x, offset.y, col);
-    drawEye(faceSprite, face.getRightEyeParams(), offset.x, offset.y, col);
-    drawMouth(faceSprite, face.getMouthParams(), offset.x, offset.y, col);
+    // The SDL backend presents every panel write on its own, so the transform is
+    // composed off-screen and the finished frame blitted in a single call.
+    const float centre = 0.5f * FACE_FRAME_SIZE;
+    faceFrame.fillSprite(COLOUR_BG);
+    faceSprite.pushRotateZoom(&faceFrame, centre, centre, faceTransform.rotation, faceTransform.scaleX, faceTransform.scaleY);
+    faceFrame.pushSprite(&display, static_cast<int>(faceTransform.x - centre), static_cast<int>(faceTransform.y - centre));
+}
 
-    float halfW = (0.5f * FACE_SPRITE_W) * faceScaleX;
-    float halfH = (0.5f * FACE_SPRITE_H) * faceScaleY;
-    display.fillRect(static_cast<int>(faceX - halfW), static_cast<int>(faceY - halfH), static_cast<int>(2.f * halfW),
-                     static_cast<int>(2.f * halfH), COLOUR_BG);
 
-    faceSprite.pushRotateZoom(&display, faceX, faceY, faceRotation, faceScaleX, faceScaleY, COLOUR_BG);
+static void showFace(FaceState state, float x, float y) {
+    Face::getFace().setState(state);
+    faceTransform = {x, y, 0.f, 1.f, 1.f, true};
 }
 
 
@@ -218,19 +234,21 @@ static void drawUIButton(const char* text, int x, int y) {
 
 
 static void drawMainMenuScreen() {
-    Face::getFace().setState(FACE_NEUTRAL);
+    showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, 100.f);
 
-    faceX = 240.f;
-    faceY = 100.f;
-    faceScaleX = 1.f;
-    faceScaleY = 1.f;
-    faceRotation = 0.f;
-    faceVisible = true;
-    
     drawBackground();
     drawUIButton("PLAY", BUTTON_PLAY_X, MAIN_MENU_BUTTON_Y);
     drawUIButton("SETTINGS", BUTTON_SETTINGS_X, MAIN_MENU_BUTTON_Y);
     canvas.pushSprite(0, 0);
+}
+
+
+static void initSprite(LGFX_Sprite& sprite, int width, int height) {
+    sprite.setColorDepth(16);
+    #ifndef C4_DESKTOP
+        sprite.setPsram(true);
+    #endif
+    sprite.createSprite(width, height);
 }
 
 
@@ -240,35 +258,31 @@ void initDisplay() {
     display.setBrightness(128);
     display.setColorDepth(16);
 
-    canvas.setColorDepth(16);
-    #ifndef C4_DESKTOP
-        canvas.setPsram(true);
-    #endif
-    canvas.createSprite(480, 320);
-
-    faceSprite.setColorDepth(16);
-    #ifndef C4_DESKTOP
-        faceSprite.setPsram(true);
-    #endif
-    faceSprite.createSprite(FACE_SPRITE_W, FACE_SPRITE_H);
+    initSprite(canvas, SCREEN_WIDTH, SCREEN_HEIGHT);
+    initSprite(faceSprite, FACE_SPRITE_W, FACE_SPRITE_H);
+    initSprite(faceFrame, FACE_FRAME_SIZE, FACE_FRAME_SIZE);
 }
 
 
 void drawDisplay() {
-    if (faceVisible) drawFace();
-    if (screenState == previousScreenState) return;
+    const uint32_t now = getNow();
 
-    switch (screenState) {
-        case SCREEN_MAIN_MENU:
-            drawMainMenuScreen();
-            break;
-        case SCREEN_SETTINGS_MENU:
-            break;
-        case SCREEN_NULL:
-            break;
+    if (screenState != previousScreenState) {
+        switch (screenState) {
+            case SCREEN_MAIN_MENU:
+                drawMainMenuScreen();
+                break;
+            case SCREEN_SETTINGS_MENU:
+            case SCREEN_NULL:
+                break;
+        }
+        previousScreenState = screenState;
     }
 
-    previousScreenState = screenState;
+    if (faceTransform.visible && now >= faceRefreshTimer) {
+        faceRefreshTimer = now + FACE_REFRESH_RATE_MS;
+        drawFace(now);
+    }
 }
 
 

@@ -73,7 +73,7 @@ enum BlinkPhase : uint8_t {
 struct BlinkParams {
     uint32_t timer = 0;
     uint32_t nextTime = 0;
-    BlinkPhase phase;
+    BlinkPhase phase = BLINK_IDLE;
 };
 
 
@@ -90,7 +90,7 @@ struct HopParams {
     uint32_t nextHopTime = 0;
     float hopHeight = 0.f;
     int16_t hopsRemaining = 0;
-    HopPhase phase;
+    HopPhase phase = HOP_IDLE;
 };
 
 
@@ -160,7 +160,7 @@ class Face {
 
         void _updateBlink(BlinkParams& blink, uint32_t now);
         void _scheduleBlink(BlinkParams& blink, uint32_t now);
-        void _applyBlink(BlinkParams& blink);
+        void _applyBlink(const BlinkParams& blink, uint32_t now);
         void _updateGlance(GlanceParams& glance, uint32_t now);
         void _updateHop(HopParams& hop, uint32_t now);
         void _updateClench(ClenchParams& clench, uint32_t now);

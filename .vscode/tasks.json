@@ -15,7 +15,8 @@
 			},
 			"problemMatcher": "$gcc",
 			"options": {
-				"cwd": "${workspaceFolder}/code/book"
+				"cwd": "${workspaceFolder}/code/book",
+				"env": {"PATH": "C:/msys64/mingw64/bin;${env:PATH}"},
 			},
 			"command": "cmake -S . -B build -G Ninja; cmake --build build"
 		},
@@ -33,7 +34,8 @@
 			},
 			"problemMatcher": "$gcc",
 			"options": {
-				"cwd": "${workspaceFolder}/code/desktop"
+				"cwd": "${workspaceFolder}/code/desktop",
+				"env": {"PATH": "C:/msys64/mingw64/bin;${env:PATH}"},
 			},
 			"command": "cmake -S . -B build -G Ninja; cmake --build build"
 		}
