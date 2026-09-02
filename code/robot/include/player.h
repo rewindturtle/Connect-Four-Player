@@ -18,6 +18,34 @@
 #define NO_COLUMN 0xFF
 
 
+// Describes the policy that actually selected a move. A play style can fall
+// back to MOVE_REASON_BEST_SCORE when its preference cannot be applied.
+enum MoveReason : uint8_t {
+    MOVE_REASON_NO_LEGAL_MOVE,
+    MOVE_REASON_BEST_SCORE,
+    MOVE_REASON_INTENTIONAL_MISTAKE,
+    MOVE_REASON_PROLONG_GAME,
+    MOVE_REASON_PREFER_CENTER,
+    MOVE_REASON_PREFER_EDGE,
+    MOVE_REASON_STACK_HIGH,
+    MOVE_REASON_SPREAD_LOW,
+    MOVE_REASON_AVOID_WIN,
+    MOVE_REASON_COPY_OPPONENT,
+    MOVE_REASON_CREATE_TRAP,
+};
+
+// Scores are from the choosing player's perspective. Comparing score with
+// bestScore reveals whether a style deliberately passed over the best move.
+struct MoveDecision {
+    uint8_t column = NO_COLUMN;
+    int8_t score = MIN_SCORE;
+    int8_t bestScore = MIN_SCORE;
+    MoveReason reason = MOVE_REASON_NO_LEGAL_MOVE;
+};
+
+static_assert(sizeof(MoveDecision) == 4, "MoveDecision should remain byte-packed");
+
+
 struct Player {
     Memo* memo = nullptr;
     float mistakeProb = 0.2f;
@@ -35,6 +63,7 @@ struct Player {
 };
 
 
+MoveDecision chooseMove(const Player& player, const Board& board);
 uint8_t chooseColumn(const Player& player, const Board& board);
 void idleSearch(const Player& player, const Board& board);
 

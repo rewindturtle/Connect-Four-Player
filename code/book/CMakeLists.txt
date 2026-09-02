@@ -22,23 +22,31 @@ add_executable(memo_tests
     tests.cpp
     ${SHARED_SOURCES})
 
-foreach(target idle_search memo_tests)
+add_executable(player_tests
+    player_tests.cpp
+    ${ROBOT_DIR}/src/board.cpp
+    ${ROBOT_DIR}/src/memo.cpp
+    ${ROBOT_DIR}/src/player.cpp
+    ${ROBOT_DIR}/src/platform.cpp)
+
+foreach(target idle_search memo_tests player_tests)
     target_compile_definitions(${target} PRIVATE C4_DESKTOP)
     target_include_directories(${target} PRIVATE ${ROBOT_DIR}/include)
 endforeach()
 
 enable_testing()
 add_test(NAME memo_tests COMMAND memo_tests)
+add_test(NAME player_tests COMMAND player_tests)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    foreach(target idle_search memo_tests)
+    foreach(target idle_search memo_tests player_tests)
         target_compile_options(${target} PRIVATE -O3 -Wall -Wextra)
     endforeach()
 endif()
 
 # Portable binary on Windows; MinGW runtime DLLs are not always on PATH
 if(MINGW)
-    foreach(target idle_search memo_tests)
+    foreach(target idle_search memo_tests player_tests)
         target_link_options(${target} PRIVATE -static)
     endforeach()
 endif()

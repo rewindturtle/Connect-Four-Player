@@ -10,6 +10,12 @@ static const uint8_t COL_SEARCH_ORDER[7] = {3, 2, 4, 1, 5, 0, 6};
 static const uint8_t COL_CENTER_RANK[7] = {5, 3, 1, 0, 2, 4, 6};
 
 
+struct MoveSelection {
+    uint8_t column;
+    MoveReason reason;
+};
+
+
 // Forward declaration
 int8_t negaMaxSecond(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta);
 
@@ -154,16 +160,16 @@ static uint8_t collectBestColumns(const int8_t (&scores)[7], uint8_t* cols) {
 }
 
 
-static uint8_t chooseColumnStandardStyle(const Player&, const Board&, const int8_t (&scores)[7]) {
+static MoveSelection chooseColumnStandardStyle(const Player&, const Board&, const int8_t (&scores)[7]) {
     uint8_t cols[7];
     uint8_t numCols = collectBestColumns(scores, cols);
 
-    if (numCols == 0) return 0;
-    return pickRandomColumn(cols, numCols);
+    if (numCols == 0) return {NO_COLUMN, MOVE_REASON_NO_LEGAL_MOVE};
+    return {pickRandomColumn(cols, numCols), MOVE_REASON_BEST_SCORE};
 }
 
 
-static uint8_t chooseColumnMistakeStyle(const Player& player, const Board&, const int8_t (&scores)[7]) {
+static MoveSelection chooseColumnMistakeStyle(const Player& player, const Board&, const int8_t (&scores)[7]) {
     uint8_t bestCols[7];
     uint8_t secondBestCols[7];
     uint8_t numBestCols = 0;
@@ -197,18 +203,18 @@ static uint8_t chooseColumnMistakeStyle(const Player& player, const Board&, cons
         }
     }
 
-    if (numBestCols == 0) return 0;
+    if (numBestCols == 0) return {NO_COLUMN, MOVE_REASON_NO_LEGAL_MOVE};
 
     float r = static_cast<float>(1. / static_cast<double>(UINT32_MAX)) * static_cast<float>(randomU32());
     if (numSecondBestCols != 0 && r < player.mistakeProb) {
-        return pickRandomColumn(secondBestCols, numSecondBestCols);
+        return {pickRandomColumn(secondBestCols, numSecondBestCols), MOVE_REASON_INTENTIONAL_MISTAKE};
     }
 
-    return pickRandomColumn(bestCols, numBestCols);
+    return {pickRandomColumn(bestCols, numBestCols), MOVE_REASON_BEST_SCORE};
 }
 
 
-static uint8_t chooseColumnProlongStyle(const Player& player, const Board& board, const int8_t (&scores)[7]) {
+static MoveSelection chooseColumnProlongStyle(const Player& player, const Board& board, const int8_t (&scores)[7]) {
     uint8_t lowestPositiveCols[7];
     uint8_t zeroCols[7];
     uint8_t numPositiveCols = 0;
@@ -231,8 +237,12 @@ static uint8_t chooseColumnProlongStyle(const Player& player, const Board& board
         }
     }
 
-    if (numPositiveCols != 0) return pickRandomColumn(lowestPositiveCols, numPositiveCols);
-    if (numZeroCols != 0) return pickRandomColumn(zeroCols, numZeroCols);
+    if (numPositiveCols != 0) {
+        return {pickRandomColumn(lowestPositiveCols, numPositiveCols), MOVE_REASON_PROLONG_GAME};
+    }
+    if (numZeroCols != 0) {
+        return {pickRandomColumn(zeroCols, numZeroCols), MOVE_REASON_PROLONG_GAME};
+    }
 
     // Every move loses, choose the best one
     return chooseColumnStandardStyle(player, board, scores);
@@ -240,11 +250,11 @@ static uint8_t chooseColumnProlongStyle(const Player& player, const Board& board
 
 
 // Central picks the most central of the best columns, otherwise the most outer
-static uint8_t chooseColumnByRank(const int8_t (&scores)[7], bool central) {
+static MoveSelection chooseColumnByRank(const int8_t (&scores)[7], bool central) {
     uint8_t cols[7];
     uint8_t numCols = collectBestColumns(scores, cols);
 
-    if (numCols == 0) return 0;
+    if (numCols == 0) return {NO_COLUMN, MOVE_REASON_NO_LEGAL_MOVE};
 
     uint8_t best = cols[0];
     for (uint8_t i = 1; i < numCols; ++i) {
@@ -252,16 +262,17 @@ static uint8_t chooseColumnByRank(const int8_t (&scores)[7], bool central) {
         if (better) best = cols[i];
     }
 
-    return best;
+    MoveReason reason = central ? MOVE_REASON_PREFER_CENTER : MOVE_REASON_PREFER_EDGE;
+    return {best, reason};
 }
 
 
 // tallest stacks onto the highest of the best columns, otherwise the lowest
-static uint8_t chooseColumnByHeight(const Board& board, const int8_t (&scores)[7], bool tallest) {
+static MoveSelection chooseColumnByHeight(const Board& board, const int8_t (&scores)[7], bool tallest) {
     uint8_t cols[7];
     uint8_t numCols = collectBestColumns(scores, cols);
 
-    if (numCols == 0) return 0;
+    if (numCols == 0) return {NO_COLUMN, MOVE_REASON_NO_LEGAL_MOVE};
 
     uint8_t picked[7];
     uint8_t numPicked = 0;
@@ -280,11 +291,12 @@ static uint8_t chooseColumnByHeight(const Board& board, const int8_t (&scores)[7
         }
     }
 
-    return pickRandomColumn(picked, numPicked);
+    MoveReason reason = tallest ? MOVE_REASON_STACK_HIGH : MOVE_REASON_SPREAD_LOW;
+    return {pickRandomColumn(picked, numPicked), reason};
 }
 
 
-static uint8_t chooseColumnPacifistStyle(const Player& player, const Board& board, const int8_t (&scores)[7]) {
+static MoveSelection chooseColumnPacifistStyle(const Player& player, const Board& board, const int8_t (&scores)[7]) {
     uint8_t cols[7];
     uint8_t numCols = 0;
 
@@ -297,11 +309,11 @@ static uint8_t chooseColumnPacifistStyle(const Player& player, const Board& boar
 
     // Nothing neutral is left, so stop refusing to win
     if (numCols == 0) return chooseColumnStandardStyle(player, board, scores);
-    return pickRandomColumn(cols, numCols);
+    return {pickRandomColumn(cols, numCols), MOVE_REASON_AVOID_WIN};
 }
 
 
-static uint8_t chooseColumnCopycatStyle(const Player& player, const Board& board, const int8_t (&scores)[7]) {
+static MoveSelection chooseColumnCopycatStyle(const Player& player, const Board& board, const int8_t (&scores)[7]) {
     if (player.lastOpponentColumn >= 7) {
         return chooseColumnStandardStyle(player, board, scores);
     }
@@ -318,7 +330,7 @@ static uint8_t chooseColumnCopycatStyle(const Player& player, const Board& board
         }
     }
 
-    return player.lastOpponentColumn;
+    return {player.lastOpponentColumn, MOVE_REASON_COPY_OPPONENT};
 }
 
 
@@ -354,11 +366,11 @@ static uint8_t countSafeReplies(const Player& player, const Board& board, uint8_
 }
 
 
-static uint8_t chooseColumnTrapStyle(const Player& player, const Board& board, const int8_t (&scores)[7]) {
+static MoveSelection chooseColumnTrapStyle(const Player& player, const Board& board, const int8_t (&scores)[7]) {
     uint8_t cols[7];
     uint8_t numCols = collectBestColumns(scores, cols);
 
-    if (numCols == 0) return 0;
+    if (numCols == 0) return {NO_COLUMN, MOVE_REASON_NO_LEGAL_MOVE};
 
     // A forced win or loss is already decided, so only break neutral ties
     if (scores[cols[0]] != 0) return chooseColumnStandardStyle(player, board, scores);
@@ -381,7 +393,7 @@ static uint8_t chooseColumnTrapStyle(const Player& player, const Board& board, c
         }
     }
 
-    return pickRandomColumn(picked, numPicked);
+    return {pickRandomColumn(picked, numPicked), MOVE_REASON_CREATE_TRAP};
 }
 
 
@@ -416,7 +428,7 @@ static bool isThreatened(const int8_t (&scores)[7]) {
 }
 
 
-uint8_t chooseColumn(const Player& player, const Board& board) {
+MoveDecision chooseMove(const Player& player, const Board& board) {
     int8_t scores[7];
     scoreColumns(player, board, player.maxDepth, scores);
 
@@ -424,28 +436,52 @@ uint8_t chooseColumn(const Player& player, const Board& board) {
         scoreColumns(player, board, player.panicDepth, scores);
     }
 
+    MoveSelection selection;
     switch (player.playStyle) {
         case MISTAKES_PLAY_STYLE:
-            return chooseColumnMistakeStyle(player, board, scores);
+            selection = chooseColumnMistakeStyle(player, board, scores);
+            break;
         case PROLONG_PLAY_STYLE:
-            return chooseColumnProlongStyle(player, board, scores);
+            selection = chooseColumnProlongStyle(player, board, scores);
+            break;
         case CENTER_PLAY_STYLE:
-            return chooseColumnByRank(scores, true);
+            selection = chooseColumnByRank(scores, true);
+            break;
         case EDGE_PLAY_STYLE:
-            return chooseColumnByRank(scores, false);
+            selection = chooseColumnByRank(scores, false);
+            break;
         case STACKER_PLAY_STYLE:
-            return chooseColumnByHeight(board, scores, true);
+            selection = chooseColumnByHeight(board, scores, true);
+            break;
         case SPREADER_PLAY_STYLE:
-            return chooseColumnByHeight(board, scores, false);
+            selection = chooseColumnByHeight(board, scores, false);
+            break;
         case PACIFIST_PLAY_STYLE:
-            return chooseColumnPacifistStyle(player, board, scores);
+            selection = chooseColumnPacifistStyle(player, board, scores);
+            break;
         case COPYCAT_PLAY_STYLE:
-            return chooseColumnCopycatStyle(player, board, scores);
+            selection = chooseColumnCopycatStyle(player, board, scores);
+            break;
         case TRAP_PLAY_STYLE:
-            return chooseColumnTrapStyle(player, board, scores);
+            selection = chooseColumnTrapStyle(player, board, scores);
+            break;
         default:
-            return chooseColumnStandardStyle(player, board, scores);
+            selection = chooseColumnStandardStyle(player, board, scores);
+            break;
     }
+
+    int8_t bestScore = MIN_SCORE;
+    for (uint8_t c = 0; c < 7; ++c) {
+        if (scores[c] > bestScore) bestScore = scores[c];
+    }
+
+    int8_t score = selection.column < 7 ? scores[selection.column] : MIN_SCORE;
+    return {selection.column, score, bestScore, selection.reason};
+}
+
+
+uint8_t chooseColumn(const Player& player, const Board& board) {
+    return chooseMove(player, board).column;
 }
 
 
