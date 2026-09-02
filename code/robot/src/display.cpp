@@ -1,6 +1,7 @@
 #include "display.h"
 #include "face.h"
 #include "platform.h"
+#include "player.h"
 
 #include <math.h>
 #include <string.h>
@@ -167,6 +168,75 @@ static void drawEyebrow(LovyanGFX& gfx, const EyebrowParams& eyebrow, const Face
 }
 
 
+static void drawTriangle(LovyanGFX& gfx, const TriangleParams& triangle, const FaceOffset& offset, uint16_t colour) {
+    int x1 = static_cast<int>(triangle.x1 + offset.x);
+    int y1 = static_cast<int>(triangle.y1 + offset.y);
+    int x2 = static_cast<int>(triangle.x2 + offset.x);
+    int y2 = static_cast<int>(triangle.y2 + offset.y);
+    int x3 = static_cast<int>(triangle.x3 + offset.x);
+    int y3 = static_cast<int>(triangle.y3 + offset.y);
+
+    if (triangle.filled) {
+        gfx.fillTriangle(x1, y1, x2, y2, x3, y3, colour);
+        return;
+    }
+
+    if (triangle.strokeWidth < 1.f) return;
+
+    const float points[3][2] = {
+        {static_cast<float>(x1), static_cast<float>(y1)},
+        {static_cast<float>(x2), static_cast<float>(y2)},
+        {static_cast<float>(x3), static_cast<float>(y3)}
+    };
+    for (uint8_t i = 0; i < 3; ++i) {
+        uint8_t next = (i + 1) % 3;
+        float dx = points[next][0] - points[i][0];
+        float dy = points[next][1] - points[i][1];
+        float length = sqrtf(dx * dx + dy * dy);
+        drawRotatedRect(gfx,
+                        0.5f * (points[i][0] + points[next][0]),
+                        0.5f * (points[i][1] + points[next][1]),
+                        length, triangle.strokeWidth,
+                        atan2f(dy, dx) / DEGREES_TO_RADIANS, colour);
+    }
+}
+
+
+static void drawDecorationLine(LovyanGFX& gfx, const DecorationLineParams& line,
+                               const FaceOffset& offset, uint16_t colour) {
+    if (line.strokeWidth < 1.f) return;
+
+    float x1 = line.x1 + offset.x;
+    float y1 = line.y1 + offset.y;
+    float x2 = line.x2 + offset.x;
+    float y2 = line.y2 + offset.y;
+    float dx = x2 - x1;
+    float dy = y2 - y1;
+    float length = sqrtf(dx * dx + dy * dy);
+    if (length < 1.f) return;
+
+    drawRotatedRect(gfx, 0.5f * (x1 + x2), 0.5f * (y1 + y2), length,
+                    line.strokeWidth, atan2f(dy, dx) / DEGREES_TO_RADIANS, colour);
+}
+
+
+static void drawTeardrop(LovyanGFX& gfx, const TeardropParams& teardrop,
+                         const FaceOffset& offset, uint16_t colour) {
+    if (!teardrop.visible || teardrop.width < 1.f || teardrop.height < 1.f) return;
+
+    float x = teardrop.x + offset.x;
+    float tipY = teardrop.y + offset.y;
+    float radius = 0.5f * teardrop.width;
+    float bulbY = tipY + teardrop.height - radius;
+
+    gfx.fillTriangle(static_cast<int>(x), static_cast<int>(tipY),
+                     static_cast<int>(x - radius), static_cast<int>(bulbY),
+                     static_cast<int>(x + radius), static_cast<int>(bulbY), colour);
+    gfx.fillCircle(static_cast<int>(x), static_cast<int>(bulbY),
+                   static_cast<int>(radius), colour);
+}
+
+
 static void drawMouth(LovyanGFX& gfx, const MouthParams& mouth, const FaceOffset& offset, uint16_t colour) {
     float mx = mouth.x + offset.x;
     float my = mouth.y + offset.y;
@@ -186,6 +256,14 @@ static void drawMouth(LovyanGFX& gfx, const MouthParams& mouth, const FaceOffset
             drawThickBezier(gfx, mx - hw, my, mx, my + mouth.height, mx + hw, my, mouth.strokeWidth, colour);
             break;
         }
+        case MOUTH_SMIRK: {
+            float halfRise = 0.5f * mouth.height;
+            drawThickBezier(gfx, mx - hw, my + halfRise,
+                            mx, my + mouth.curve,
+                            mx + hw, my - halfRise,
+                            mouth.strokeWidth, colour);
+            break;
+        }
     }
 }
 
@@ -199,13 +277,21 @@ static void drawFace(uint32_t now) {
 
     const FaceOffset offset = face.getOffset();
     const uint16_t colour = colourToRgb565(face.getColour());
+    const FaceDecorations& decorations = face.getDecorations();
 
     faceSprite.fillSprite(COLOUR_BG);
+    drawTriangle(faceSprite, decorations.leftEar, offset, colour);
+    drawTriangle(faceSprite, decorations.rightEar, offset, colour);
     drawEyebrow(faceSprite, face.getLeftBrowParams(), offset, colour);
     drawEyebrow(faceSprite, face.getRightBrowParams(), offset, colour);
     drawEye(faceSprite, face.getLeftEyeParams(), offset, colour);
     drawEye(faceSprite, face.getRightEyeParams(), offset, colour);
+    drawTriangle(faceSprite, decorations.nose, offset, colour);
     drawMouth(faceSprite, face.getMouthParams(), offset, colour);
+    drawTriangle(faceSprite, decorations.accent, offset, colour);
+    drawDecorationLine(faceSprite, decorations.accentLine1, offset, colour);
+    drawDecorationLine(faceSprite, decorations.accentLine2, offset, colour);
+    drawTeardrop(faceSprite, decorations.teardrop, offset, colour);
 
     // The SDL backend presents every panel write on its own, so the transform is
     // composed off-screen and the finished frame blitted in a single call.
@@ -217,7 +303,12 @@ static void drawFace(uint32_t now) {
 
 
 static void showFace(FaceState state, float x, float y) {
-    Face::getFace().setState(state);
+    Face& face = Face::getFace();
+    face.setState(state);
+
+    FacePersonality personality = static_cast<FacePersonality>(randomU32() % static_cast<uint32_t>(FACE_PERSONALITY_COUNT));
+    face.setPersonality(personality);
+
     faceTransform = {x, y, 0.f, 1.f, 1.f, true};
     // The screen repaint underneath wipes the face, and the face may be idle.
     faceNeedsRedraw = true;
@@ -295,4 +386,44 @@ void drawDisplay() {
 
 void setScreen(ScreenState state) {
     screenState = state;
+}
+
+
+void setFacePlayStyle(uint8_t playStyle) {
+    FacePersonality personality;
+    switch (playStyle) {
+        case MISTAKES_PLAY_STYLE:
+            personality = FACE_PERSONALITY_MISTAKES;
+            break;
+        case PROLONG_PLAY_STYLE:
+            personality = FACE_PERSONALITY_PROLONG;
+            break;
+        case CENTER_PLAY_STYLE:
+            personality = FACE_PERSONALITY_CENTER;
+            break;
+        case EDGE_PLAY_STYLE:
+            personality = FACE_PERSONALITY_EDGE;
+            break;
+        case STACKER_PLAY_STYLE:
+            personality = FACE_PERSONALITY_STACKER;
+            break;
+        case SPREADER_PLAY_STYLE:
+            personality = FACE_PERSONALITY_SPREADER;
+            break;
+        case PACIFIST_PLAY_STYLE:
+            personality = FACE_PERSONALITY_PACIFIST;
+            break;
+        case COPYCAT_PLAY_STYLE:
+            personality = FACE_PERSONALITY_COPYCAT;
+            break;
+        case TRAP_PLAY_STYLE:
+            personality = FACE_PERSONALITY_TRAP;
+            break;
+        default:
+            personality = FACE_PERSONALITY_STANDARD;
+            break;
+    }
+
+    Face::getFace().setPersonality(personality);
+    faceNeedsRedraw = true;
 }

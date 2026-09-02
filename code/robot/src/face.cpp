@@ -7,16 +7,7 @@
 #define BLINK_CLOSE_MS 25
 #define BLINK_HOLD_MS 60
 #define BLINK_OPEN_MS 25
-#define BLINK_MIN_WAIT 2500
-#define BLINK_MAX_WAIT 5000
 #define BLINK_MIN_HEIGHT 2.f
-
-#define GLANCE_MIN_WAIT 5000
-#define GLANCE_MAX_WAIT 9000
-#define GLANCE_HOLD_MIN 400
-#define GLANCE_HOLD_MAX 700
-#define GLANCE_MIN_OFFSET 3.f
-#define GLANCE_MAX_OFFSET 6.f
 
 #define HOP_UP_MS 80
 #define HOP_DOWN_MS 120
@@ -36,6 +27,149 @@
 #define CLENCH_HOLD_MS 350
 
 
+struct PersonalityProfile {
+    EyeParams leftEye;
+    EyeParams rightEye;
+    EyebrowParams leftBrow;
+    EyebrowParams rightBrow;
+    MouthParams mouth;
+    Colour colour;
+    FaceDecorations decorations;
+    uint16_t blinkMinWait;
+    uint16_t blinkMaxWait;
+    uint16_t glanceMinWait;
+    uint16_t glanceMaxWait;
+    uint16_t glanceHoldMin;
+    uint16_t glanceHoldMax;
+    float glanceMinX;
+    float glanceMaxX;
+    float glanceMinY;
+    float glanceMaxY;
+};
+
+
+static const PersonalityProfile PERSONALITY_PROFILES[FACE_PERSONALITY_COUNT] = {
+    // Standard: calm and attentive.
+    {
+        {43.f, 43.f, 26.f, 26.f, 0.f, 0.f, EYE_RECT},
+        {97.f, 43.f, 26.f, 26.f, 0.f, 0.f, EYE_RECT},
+        {}, {},
+        {70.f, 85.f, 60.f, 6.f, 0.f, 0.f, MOUTH_BAR},
+        {91, 196, 216}, {},
+        2500, 5000, 5000, 9000, 400, 700,
+        -6.f, -3.f, 2.f, 4.f
+    },
+    // Mistakes: asymmetrical and a little sheepish.
+    {
+        {42.f, 44.f, 30.f, 24.f, -5.f, 0.f, EYE_RECT},
+        {98.f, 48.f, 20.f, 20.f, 7.f, 0.f, EYE_RECT},
+        {24.f, 24.f, 57.f, 20.f, 4.f},
+        {84.f, 22.f, 111.f, 29.f, 4.f},
+        {70.f, 88.f, 30.f, 13.f, 0.f, 4.f, MOUTH_D_OUTLINE},
+        {244, 174, 66},
+        {{}, {}, {}, {}, {24.f, 72.f, 34.f, 80.f, 3.f}, {34.f, 72.f, 24.f, 80.f, 3.f}, {}},
+        1700, 3500, 3000, 6000, 350, 650,
+        -8.f, -3.f, 2.f, 5.f
+    },
+    // Prolong: relaxed, patient, and teasing.
+    {
+        {43.f, 48.f, 30.f, 12.f, -2.f, 0.f, EYE_RECT},
+        {97.f, 48.f, 30.f, 12.f, 2.f, 0.f, EYE_RECT},
+        {25.f, 27.f, 59.f, 25.f, 4.f},
+        {81.f, 23.f, 113.f, 28.f, 4.f},
+        {70.f, 88.f, 48.f, 0.f, 10.f, 5.f, MOUTH_CURVE},
+        {172, 126, 235}, {},
+        4500, 7500, 6500, 10000, 650, 1000,
+        -6.f, -2.f, 1.f, 3.f
+    },
+    // Center: precise, stable, and symmetrical.
+    {
+        {43.f, 43.f, 24.f, 30.f, 0.f, 0.f, EYE_RECT},
+        {97.f, 43.f, 24.f, 30.f, 0.f, 0.f, EYE_RECT},
+        {27.f, 22.f, 59.f, 22.f, 4.f},
+        {81.f, 22.f, 113.f, 22.f, 4.f},
+        {70.f, 88.f, 50.f, 5.f, 0.f, 0.f, MOUTH_BAR},
+        {88, 161, 244},
+        {{}, {}, {}, {64.f, 68.f, 70.f, 76.f, 76.f, 68.f, 0.f, true}, {}, {}, {}},
+        3000, 5200, 5500, 8500, 350, 600,
+        -5.f, -3.f, 2.f, 3.f
+    },
+    // Edge: mischievous and quick to look across the board.
+    {
+        {43.f, 47.f, 28.f, 17.f, -6.f, 0.f, EYE_RECT},
+        {97.f, 47.f, 28.f, 17.f, 6.f, 0.f, EYE_RECT},
+        {24.f, 22.f, 58.f, 28.f, 5.f},
+        {83.f, 28.f, 116.f, 20.f, 5.f},
+        {70.f, 88.f, 52.f, 0.f, 12.f, 5.f, MOUTH_CURVE},
+        {225, 112, 190}, {},
+        2300, 4300, 3200, 6000, 450, 750,
+        -9.f, -5.f, 2.f, 4.f
+    },
+    // Stacker: determined and upward-driven.
+    {
+        {43.f, 46.f, 27.f, 22.f, 5.f, 0.f, EYE_RECT},
+        {97.f, 46.f, 27.f, 22.f, -5.f, 0.f, EYE_RECT},
+        {24.f, 27.f, 59.f, 21.f, 5.f},
+        {81.f, 21.f, 116.f, 27.f, 5.f},
+        {70.f, 89.f, 52.f, 6.f, 0.f, 0.f, MOUTH_BAR},
+        {240, 145, 70},
+        {{}, {}, {}, {}, {64.f, 68.f, 70.f, 76.f, 4.f}, {70.f, 76.f, 76.f, 68.f, 4.f}, {}},
+        2400, 4300, 4000, 7000, 350, 600,
+        -6.f, -3.f, 1.f, 3.f
+    },
+    // Spreader: wide-eyed, curious, and scanning.
+    {
+        {43.f, 43.f, 32.f, 31.f, 0.f, 0.f, EYE_RECT},
+        {97.f, 43.f, 32.f, 31.f, 0.f, 0.f, EYE_RECT},
+        {}, {},
+        {70.f, 89.f, 28.f, 12.f, 0.f, 4.f, MOUTH_D_OUTLINE},
+        {72, 211, 184}, {},
+        2100, 4000, 2400, 5000, 300, 550,
+        -9.f, -2.f, 2.f, 5.f
+    },
+    // Pacifist: gentle, concerned, and soft-spoken.
+    {
+        {43.f, 49.f, 34.f, 18.f, 0.f, 5.f, EYE_ARC},
+        {97.f, 49.f, 34.f, 18.f, 0.f, 5.f, EYE_ARC},
+        {25.f, 24.f, 58.f, 20.f, 4.f},
+        {82.f, 20.f, 115.f, 24.f, 4.f},
+        {70.f, 90.f, 48.f, 0.f, 9.f, 5.f, MOUTH_CURVE},
+        {137, 210, 145},
+        {{}, {}, {}, {}, {}, {}, {120.f, 27.f, 9.f, 17.f, true}},
+        3200, 5600, 5200, 8800, 500, 850,
+        -5.f, -2.f, 2.f, 4.f
+    },
+    // Copycat: unmistakably feline, including ears and a triangle nose.
+    {
+        {43.f, 48.f, 27.f, 18.f, -8.f, 0.f, EYE_RECT},
+        {97.f, 48.f, 27.f, 18.f, 8.f, 0.f, EYE_RECT},
+        {}, {},
+        {70.f, 96.f, 38.f, 0.f, 10.f, 4.f, MOUTH_CURVE},
+        {239, 151, 72},
+        {
+            {8.f, 27.f, 20.f, 2.f, 51.f, 19.f, 5.f, false},
+            {89.f, 19.f, 120.f, 2.f, 132.f, 27.f, 5.f, false},
+            {64.f, 73.f, 76.f, 73.f, 70.f, 81.f, 0.f, true},
+            {}, {}, {}, {}
+        },
+        1900, 3800, 3000, 5500, 400, 700,
+        -8.f, -3.f, 2.f, 5.f
+    },
+    // Trap: narrow eyes, one raised brow, and a restrained smirk.
+    {
+        {43.f, 49.f, 29.f, 14.f, 5.f, 0.f, EYE_RECT},
+        {97.f, 49.f, 29.f, 14.f, -5.f, 0.f, EYE_RECT},
+        {24.f, 27.f, 58.f, 24.f, 4.f},
+        {82.f, 17.f, 115.f, 25.f, 5.f},
+        {73.f, 90.f, 42.f, 8.f, 6.f, 5.f, MOUTH_SMIRK},
+        {137, 205, 92},
+        {},
+        3000, 5200, 4800, 7800, 500, 850,
+        -8.f, -4.f, 2.f, 4.f
+    }
+};
+
+
 static uint32_t randRange(uint32_t low, uint32_t high) {
     return low + (randomU32() % (high - low));
 }
@@ -52,33 +186,35 @@ static float phaseProgress(uint32_t now, uint32_t start, uint32_t durationMs) {
 }
 
 
-static void loadNeutral(EyeParams& le, EyeParams& re, EyebrowParams& lb, EyebrowParams& rb, MouthParams& mouth, Colour& colour) {
-    le = {43.f, 43.f, 26.f, 26.f, 0.f, 0.f, EYE_RECT};
-    re = {97.f, 43.f, 26.f, 26.f, 0.f, 0.f, EYE_RECT};
-    lb = {0.f, 0.f, 0.f, 0.f, 0.f};
-    rb = {0.f, 0.f, 0.f, 0.f, 0.f};
-    mouth = {70.f, 85.f, 60.f, 6.f, 0.f, 0.f, MOUTH_BAR};
-    colour = {91, 196, 216};
+static Colour blendColour(const Colour& base, const Colour& tint, uint8_t tintAmount) {
+    uint16_t baseAmount = 255 - tintAmount;
+    return {
+        static_cast<uint8_t>((base.r * baseAmount + tint.r * tintAmount) / 255),
+        static_cast<uint8_t>((base.g * baseAmount + tint.g * tintAmount) / 255),
+        static_cast<uint8_t>((base.b * baseAmount + tint.b * tintAmount) / 255)
+    };
 }
 
 
-static void loadCelebrating(EyeParams& le, EyeParams& re, EyebrowParams& lb, EyebrowParams& rb, MouthParams& mouth, Colour& colour) {
+static void applyCelebrating(EyeParams& le, EyeParams& re, EyebrowParams& lb, EyebrowParams& rb,
+                             MouthParams& mouth, Colour& colour) {
     le = {43.f, 48.f, 38.f, 24.f, 0.f, 5.f, EYE_ARC};
     re = {97.f, 48.f, 38.f, 24.f, 0.f, 5.f, EYE_ARC};
     lb = {0.f, 0.f, 0.f, 0.f, 0.f};
     rb = {0.f, 0.f, 0.f, 0.f, 0.f};
     mouth = {70.f, 78.f, 80.f, 32.f, 0.f, 5.f, MOUTH_D_OUTLINE};
-    colour = {93, 202, 101};
+    colour = blendColour(colour, {93, 202, 101}, 96);
 }
 
 
-static void loadAngry(EyeParams& le, EyeParams& re, EyebrowParams& lb, EyebrowParams& rb, MouthParams& mouth, Colour& colour) {
+static void applyAngry(EyeParams& le, EyeParams& re, EyebrowParams& lb, EyebrowParams& rb,
+                       MouthParams& mouth, Colour& colour) {
     le = {43.f, 54.f, 26.f, 16.f,  6.f, 0.f, EYE_RECT};
     re = {97.f, 54.f, 26.f, 16.f, -6.f, 0.f, EYE_RECT};
     lb = {22.f, 22.f, 62.f, 36.f, 6.f};
     rb = {118.f, 22.f, 78.f, 36.f, 6.f};
     mouth = {70.f, 100.f, 64.f, 0.f, -20.f, 6.f, MOUTH_CURVE};
-    colour = {226, 75, 74};
+    colour = blendColour(colour, {226, 75, 74}, 112);
 }
 
 
@@ -89,10 +225,48 @@ static void loadAngryClench(EyebrowParams& lb, EyebrowParams& rb, MouthParams& m
 }
 
 
-Face::Face() : _state(FACE_NEUTRAL) {
+Face::Face() : _state(FACE_NEUTRAL), _personality(FACE_PERSONALITY_STANDARD) {
     _offset = {0.f, 0.f};
-    loadNeutral(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
+    _loadPose();
     _info.neutral = {};
+}
+
+
+void Face::_loadPose() {
+    const PersonalityProfile& profile = PERSONALITY_PROFILES[_personality];
+    _leftEye = profile.leftEye;
+    _rightEye = profile.rightEye;
+    _leftBrow = profile.leftBrow;
+    _rightBrow = profile.rightBrow;
+    _mouth = profile.mouth;
+    _colour = profile.colour;
+    _decorations = profile.decorations;
+
+    switch (_state) {
+        case FACE_NEUTRAL:
+            break;
+        case FACE_CELEBRATING:
+            applyCelebrating(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
+            break;
+        case FACE_ANGRY:
+            applyAngry(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
+            break;
+    }
+}
+
+
+void Face::_resetStateInfo() {
+    switch (_state) {
+        case FACE_NEUTRAL:
+            _info.neutral = {};
+            break;
+        case FACE_CELEBRATING:
+            _info.celebrating = {};
+            break;
+        case FACE_ANGRY:
+            _info.angry = {};
+            break;
+    }
 }
 
 
@@ -101,26 +275,26 @@ void Face::setState(FaceState state) {
 
     _state = state;
     _offset = {0.f, 0.f};
+    _loadPose();
+    _resetStateInfo();
+    _requiresDraw = true;
+}
 
-    switch (state) {
-        case FACE_NEUTRAL:
-            loadNeutral(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
-            _info.neutral = {};
-            break;
-        case FACE_CELEBRATING:
-            loadCelebrating(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
-            _info.celebrating = {};
-            break;
-        case FACE_ANGRY:
-            loadAngry(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
-            _info.angry = {};
-            break;
-    }
+
+void Face::setPersonality(FacePersonality personality) {
+    if (personality >= FACE_PERSONALITY_COUNT || personality == _personality) return;
+
+    _personality = personality;
+    _offset = {0.f, 0.f};
+    _loadPose();
+    _resetStateInfo();
+    _requiresDraw = true;
 }
 
 
 void Face::_scheduleBlink(BlinkParams& blink, uint32_t now) {
-    blink.nextTime = now + randRange(BLINK_MIN_WAIT, BLINK_MAX_WAIT);
+    const PersonalityProfile& profile = PERSONALITY_PROFILES[_personality];
+    blink.nextTime = now + randRange(profile.blinkMinWait, profile.blinkMaxWait);
     blink.phase = BLINK_IDLE;
 }
 
@@ -181,26 +355,32 @@ void Face::_applyBlink(const BlinkParams& blink, uint32_t now) {
 
 
 void Face::_updateGlance(GlanceParams& glance, uint32_t now) {
+    const PersonalityProfile& profile = PERSONALITY_PROFILES[_personality];
+
     if (glance.nextGlanceTime == 0) {
-        glance.nextGlanceTime = now + randRange(GLANCE_MIN_WAIT, GLANCE_MAX_WAIT);
+        glance.nextGlanceTime = now + randRange(profile.glanceMinWait, profile.glanceMaxWait);
     }
 
     if (glance.glancing) {
         if (now >= glance.glanceReturnTime) {
-            glance.glanceOffset = 0.f;
+            glance.glanceOffsetX = 0.f;
+            glance.glanceOffsetY = 0.f;
             glance.glancing = false;
-            glance.nextGlanceTime = now + randRange(GLANCE_MIN_WAIT, GLANCE_MAX_WAIT);
+            glance.nextGlanceTime = now + randRange(profile.glanceMinWait, profile.glanceMaxWait);
         }
     } else if (now >= glance.nextGlanceTime) {
-        float dir = (randomU32() % 2 == 0) ? 1.f : -1.f;
-
-        glance.glanceOffset = dir * randFloat(GLANCE_MIN_OFFSET, GLANCE_MAX_OFFSET);
-        glance.glanceReturnTime = now + randRange(GLANCE_HOLD_MIN, GLANCE_HOLD_MAX);
+        // The display sits above and to the right of the physical board, so
+        // negative X and positive Y make idle glances meet the play area.
+        glance.glanceOffsetX = randFloat(profile.glanceMinX, profile.glanceMaxX);
+        glance.glanceOffsetY = randFloat(profile.glanceMinY, profile.glanceMaxY);
+        glance.glanceReturnTime = now + randRange(profile.glanceHoldMin, profile.glanceHoldMax);
         glance.glancing = true;
     }
 
-    _leftEye.x += glance.glanceOffset;
-    _rightEye.x += glance.glanceOffset;
+    _leftEye.x += glance.glanceOffsetX;
+    _leftEye.y += glance.glanceOffsetY;
+    _rightEye.x += glance.glanceOffsetX;
+    _rightEye.y += glance.glanceOffsetY;
 }
 
 
@@ -286,7 +466,9 @@ void Face::_updateClench(ClenchParams& clench, uint32_t now) {
 
 
 void Face::_updateRequiresDraw() {
-    FaceSnapshot current = {_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _offset, _colour};
+    FaceSnapshot current = {
+        _leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _offset, _colour, _decorations
+    };
 
     _requiresDraw = !(current == _previous);
     _previous = current;
@@ -294,21 +476,20 @@ void Face::_updateRequiresDraw() {
 
 
 void Face::update(uint32_t now) {
+    _loadPose();
+
     switch (_state) {
         case FACE_NEUTRAL:
-            loadNeutral(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
             _updateBlink(_info.neutral.blink, now);
             _applyBlink(_info.neutral.blink, now);
             _updateGlance(_info.neutral.glance, now);
             break;
 
         case FACE_CELEBRATING:
-            loadCelebrating(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
             _updateHop(_info.celebrating.hop, now);
             break;
 
         case FACE_ANGRY:
-            loadAngry(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
             _updateBlink(_info.angry.blink, now);
             _applyBlink(_info.angry.blink, now);
             _updateClench(_info.angry.clench, now);

@@ -14,7 +14,8 @@ enum EyeShape : uint8_t {
 enum MouthShape : uint8_t {
     MOUTH_BAR,
     MOUTH_CURVE,
-    MOUTH_D_OUTLINE
+    MOUTH_D_OUTLINE,
+    MOUTH_SMIRK
 };
 
 
@@ -62,6 +63,47 @@ struct FaceOffset {
 };
 
 
+struct TriangleParams {
+    float x1 = 0.f;
+    float y1 = 0.f;
+    float x2 = 0.f;
+    float y2 = 0.f;
+    float x3 = 0.f;
+    float y3 = 0.f;
+    float strokeWidth = 0.f;
+    bool filled = false;
+};
+
+
+struct DecorationLineParams {
+    float x1 = 0.f;
+    float y1 = 0.f;
+    float x2 = 0.f;
+    float y2 = 0.f;
+    float strokeWidth = 0.f;
+};
+
+
+struct TeardropParams {
+    float x = 0.f;
+    float y = 0.f;
+    float width = 0.f;
+    float height = 0.f;
+    bool visible = false;
+};
+
+
+struct FaceDecorations {
+    TriangleParams leftEar;
+    TriangleParams rightEar;
+    TriangleParams nose;
+    TriangleParams accent;
+    DecorationLineParams accentLine1;
+    DecorationLineParams accentLine2;
+    TeardropParams teardrop;
+};
+
+
 inline bool operator==(const EyeParams& a, const EyeParams& b) {
     return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height &&
            a.angle == b.angle && a.strokeWidth == b.strokeWidth && a.shape == b.shape;
@@ -89,6 +131,32 @@ inline bool operator==(const FaceOffset& a, const FaceOffset& b) {
 }
 
 
+inline bool operator==(const TriangleParams& a, const TriangleParams& b) {
+    return a.x1 == b.x1 && a.y1 == b.y1 && a.x2 == b.x2 && a.y2 == b.y2 &&
+           a.x3 == b.x3 && a.y3 == b.y3 && a.strokeWidth == b.strokeWidth &&
+           a.filled == b.filled;
+}
+
+
+inline bool operator==(const DecorationLineParams& a, const DecorationLineParams& b) {
+    return a.x1 == b.x1 && a.y1 == b.y1 && a.x2 == b.x2 && a.y2 == b.y2 &&
+           a.strokeWidth == b.strokeWidth;
+}
+
+
+inline bool operator==(const TeardropParams& a, const TeardropParams& b) {
+    return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height &&
+           a.visible == b.visible;
+}
+
+
+inline bool operator==(const FaceDecorations& a, const FaceDecorations& b) {
+    return a.leftEar == b.leftEar && a.rightEar == b.rightEar && a.nose == b.nose &&
+           a.accent == b.accent && a.accentLine1 == b.accentLine1 &&
+           a.accentLine2 == b.accentLine2 && a.teardrop == b.teardrop;
+}
+
+
 // Everything drawFace() reads, so a match means the rendered face is identical.
 struct FaceSnapshot {
     EyeParams leftEye;
@@ -98,13 +166,15 @@ struct FaceSnapshot {
     MouthParams mouth;
     FaceOffset offset;
     Colour colour;
+    FaceDecorations decorations;
 };
 
 
 inline bool operator==(const FaceSnapshot& a, const FaceSnapshot& b) {
     return a.leftEye == b.leftEye && a.rightEye == b.rightEye &&
            a.leftBrow == b.leftBrow && a.rightBrow == b.rightBrow &&
-           a.mouth == b.mouth && a.offset == b.offset && a.colour == b.colour;
+           a.mouth == b.mouth && a.offset == b.offset && a.colour == b.colour &&
+           a.decorations == b.decorations;
 }
 
 
@@ -143,7 +213,8 @@ struct HopParams {
 struct GlanceParams {
     uint32_t nextGlanceTime = 0;
     uint32_t glanceReturnTime = 0;
-    float glanceOffset = 0.f;
+    float glanceOffsetX = 0.f;
+    float glanceOffsetY = 0.f;
     bool glancing = false;
 };
 
@@ -159,6 +230,23 @@ enum FaceState : uint8_t {
     FACE_NEUTRAL,
     FACE_CELEBRATING,
     FACE_ANGRY
+};
+
+
+// Personality is persistent; FaceState is a temporary emotional expression.
+// These remain independent of Player and are mapped at the game/UI boundary.
+enum FacePersonality : uint8_t {
+    FACE_PERSONALITY_STANDARD,
+    FACE_PERSONALITY_MISTAKES,
+    FACE_PERSONALITY_PROLONG,
+    FACE_PERSONALITY_CENTER,
+    FACE_PERSONALITY_EDGE,
+    FACE_PERSONALITY_STACKER,
+    FACE_PERSONALITY_SPREADER,
+    FACE_PERSONALITY_PACIFIST,
+    FACE_PERSONALITY_COPYCAT,
+    FACE_PERSONALITY_TRAP,
+    FACE_PERSONALITY_COUNT
 };
 
 
@@ -201,11 +289,15 @@ class Face {
         MouthParams _mouth;
         FaceOffset _offset;
         Colour _colour;
+        FaceDecorations _decorations;
         FaceInfo _info;
         FaceState _state;
+        FacePersonality _personality;
         FaceSnapshot _previous = {};
         bool _requiresDraw = true;
 
+        void _loadPose();
+        void _resetStateInfo();
         void _updateRequiresDraw();
         void _updateBlink(BlinkParams& blink, uint32_t now);
         void _scheduleBlink(BlinkParams& blink, uint32_t now);
@@ -221,6 +313,8 @@ class Face {
 
         void setState(FaceState state);
         inline FaceState getState() const {return _state;}
+        void setPersonality(FacePersonality personality);
+        inline FacePersonality getPersonality() const {return _personality;}
         inline bool requiresDraw() const {return _requiresDraw;}
 
         inline const EyeParams& getLeftEyeParams() const {return _leftEye;}
@@ -228,6 +322,7 @@ class Face {
         inline const EyebrowParams& getLeftBrowParams()  const {return _leftBrow;}
         inline const EyebrowParams& getRightBrowParams() const {return _rightBrow;}
         inline const MouthParams& getMouthParams() const {return _mouth;}
+        inline const FaceDecorations& getDecorations() const {return _decorations;}
         inline Colour getColour() const {return _colour;}
         inline FaceOffset getOffset() const {return _offset;}
 };
