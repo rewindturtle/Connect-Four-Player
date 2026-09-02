@@ -21,7 +21,7 @@ static LGFX_Sprite canvas(&display);
 static LGFX_Sprite faceSprite(&display);
 static LGFX_Sprite faceFrame(&display);
 
-static constexpr float DEG_TO_RAD = 0.01745329251f;
+static constexpr float DEGREES_TO_RADIANS = 0.01745329251f;
 
 #define COLOUR_BG 0x0862
 #define COLOUR_GRID 0x1988
@@ -90,7 +90,7 @@ static void drawText(const char* text, int centerX, int y, int spacing) {
 
 
 static void drawRotatedRect(LovyanGFX& gfx, float cx, float cy, float w, float h, float angleDeg, uint16_t colour) {
-    float rad = angleDeg * DEG_TO_RAD;
+    float rad = angleDeg * DEGREES_TO_RADIANS;
     float cosA = cosf(rad);
     float sinA = sinf(rad);
     float hw = 0.5f * w;
@@ -162,7 +162,8 @@ static void drawEyebrow(LovyanGFX& gfx, const EyebrowParams& eyebrow, const Face
     float length = sqrtf(dx * dx + dy * dy);
     if (length < 1.f) return;
 
-    drawRotatedRect(gfx, 0.5f * (x1 + x2), 0.5f * (y1 + y2), length, eyebrow.strokeWidth, atan2f(dy, dx) / DEG_TO_RAD, colour);
+    drawRotatedRect(gfx, 0.5f * (x1 + x2), 0.5f * (y1 + y2), length, eyebrow.strokeWidth,
+                    atan2f(dy, dx) / DEGREES_TO_RADIANS, colour);
 }
 
 

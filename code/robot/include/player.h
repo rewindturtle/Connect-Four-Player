@@ -19,13 +19,16 @@
 
 
 struct Player {
-    MemoEntry* memo = nullptr;
+    Memo* memo = nullptr;
     float mistakeProb = 0.2f;
     uint8_t maxDepth = 4;
     uint8_t panicDepth = 8;
     uint8_t turn = 0;
     uint8_t playStyle = STANDARD_PLAY_STYLE;
     uint8_t lastOpponentColumn = NO_COLUMN;
+    // Turn order and display colour are independent. Search only uses isFirst;
+    // isRed is presentation/game configuration state.
+    bool isFirst = true;
     bool isRed = true;
     bool canPanic = false;
     volatile bool forceStop = false;

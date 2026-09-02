@@ -2,10 +2,14 @@
 #define MEMO_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 #define MEMO_SIZE 2097152
 #define MEMO_BITS 21
 #define MEMO_SLOT_MASK 0x001FFFFF
+#define MEMO_TAG_MASK 0x03FFFFFF
+#define MEMO_SCORE_SHIFT 26
+#define MEMO_ENTRY_BYTES 5
 
 #define DEPTH_MASK 0x3F
 #define FLAG_MASK 0xC0
@@ -22,41 +26,48 @@
 #define MAX_SCORE INT8_MAX
 
 
-struct MemoEntry {
-    // The position of the entry is equal to (hash & MEMO_SLOT_MASK)
-    // The key is the next 16 bits of the hash to check if two colliding
-    // hashes are equal. It is possible for two different uint64_t hashes
-    // to have the same 16 + MEMO_BITS bits but it is very rare so is allowable
-    uint16_t key;
-
-    // Score is between -42 and +42
-    int8_t score;
-
-    // The Alpha-beta pruning flag and depth are packed together into 1 byte
-    // Depth takes up the first 6 bits while the flag is the back 2
-    uint8_t flagAndDepth = 0;
+// Structure-of-arrays keeps the 32-bit values aligned while using exactly five
+// bytes per slot. The slot supplies 21 bits of the exact 47-bit board key; the
+// remaining 26-bit tag and a 6-bit score code fill tagAndScore.
+struct Memo {
+    uint32_t* tagAndScore;
+    uint8_t* flagAndDepth;
 };
 
 
-inline uint8_t getMemoDepth(const MemoEntry& entry) {
-    return entry.flagAndDepth & DEPTH_MASK;
+inline uint8_t getMemoDepth(const Memo& memo, uint32_t slot) {
+    return memo.flagAndDepth[slot] & DEPTH_MASK;
 }
 
 
-inline uint8_t getMemoFlag(const MemoEntry& entry) {
-    return entry.flagAndDepth & FLAG_MASK;
+inline uint8_t getMemoFlag(const Memo& memo, uint32_t slot) {
+    return memo.flagAndDepth[slot] & FLAG_MASK;
 }
 
 
-MemoEntry* initMemo();
-void resetMemo(MemoEntry* memo);
-void freeMemo(MemoEntry* memo);
-
-inline bool isSlotInitialized(MemoEntry* memo, uint32_t slot) {
-    return getMemoDepth(memo[slot]) != 0;
+inline uint32_t getMemoTag(const Memo& memo, uint32_t slot) {
+    return memo.tagAndScore[slot] & MEMO_TAG_MASK;
 }
 
-bool insertMemoEntry(MemoEntry& entry, uint16_t key, int8_t score, uint8_t depth, int8_t alpha, int8_t beta);
+
+inline uint8_t getMemoScoreCode(const Memo& memo, uint32_t slot) {
+    return static_cast<uint8_t>(memo.tagAndScore[slot] >> MEMO_SCORE_SHIFT);
+}
+
+Memo* initMemo();
+void resetMemo(Memo* memo);
+void freeMemo(Memo* memo);
+
+inline bool isSlotInitialized(const Memo* memo, uint32_t slot) {
+    return getMemoDepth(*memo, slot) != 0;
+}
+
+uint8_t encodeMemoScore(int8_t score, uint8_t occupied);
+int8_t decodeMemoScore(uint8_t scoreCode, uint8_t occupied);
+int8_t getMemoScore(const Memo& memo, uint32_t slot, uint8_t occupied);
+
+bool insertMemoEntry(Memo& memo, uint32_t slot, uint32_t tag, int8_t score,
+                     uint8_t occupied, uint8_t depth, int8_t alpha, int8_t beta);
 
 
 #endif // MEMO_H

@@ -4,9 +4,8 @@
 // moves at each, which is the query shape the robot's chooseColumn uses. The
 // output is the raw memo table plus a small header, ready for an SD card.
 //
-// The board, hash, entry layout and search below are copies of the firmware's.
-// They must stay in step or the book is meaningless -- the fingerprint in the
-// header exists to catch that, but it only catches it at load time.
+// Board ranking and memo storage are compiled from the firmware's sources so
+// the generated artifact cannot silently drift from the robot's layout.
 
 #include <chrono>
 #include <cstdint>
@@ -18,148 +17,45 @@
 #include <unordered_set>
 #include <vector>
 
-
-// Board
-
-#define COLUMN_MASK 0x3FULL
-#define BOARD_MASK 0x0000FDFBF7EFDFBFULL
-
-
-struct Board {
-    uint64_t redPieces;
-    uint64_t allPieces;
-};
-
-
-static inline uint64_t getYellowPieces(const Board& board) {
-    return board.redPieces ^ board.allPieces;
-}
-
-
-static inline bool isColumnFull(const Board& board, uint8_t col) {
-    uint64_t mask = 1ULL << (7 * col + 5);
-    return (board.allPieces & mask) != 0;
-}
-
-
-static inline bool isBoardFull(const Board& board) {
-    return (board.allPieces & BOARD_MASK) == BOARD_MASK;
-}
-
-
-static bool containsWin(uint64_t pieces) {
-    uint64_t m = pieces & (pieces >> 1);
-    if (m & (m >> 2)) return true;
-
-    m = pieces & (pieces >> 7);
-    if (m & (m >> 14)) return true;
-
-    m = pieces & (pieces >> 8);
-    if (m & (m >> 16)) return true;
-
-    m = pieces & (pieces >> 6);
-    return (m & (m >> 12)) != 0;
-}
-
-
-static uint64_t landingMask(const Board& board, uint8_t col) {
-    uint8_t idx = 7 * col;
-    uint64_t colMask = COLUMN_MASK << idx;
-    return ((board.allPieces & colMask) + (1ULL << idx)) & colMask;
-}
-
-
-static void placeRedPiece(Board& board, uint8_t col) {
-    uint64_t mask = landingMask(board, col);
-    board.redPieces |= mask;
-    board.allPieces |= mask;
-}
-
-
-static void placeYellowPiece(Board& board, uint8_t col) {
-    board.allPieces |= landingMask(board, col);
-}
-
-
-static inline uint64_t murmur3_64(uint64_t key, uint64_t seed) {
-    key ^= seed;
-    key ^= key >> 33;
-    key *= 0xFF51AFD7ED558CCD;
-    key ^= key >> 33;
-    key *= 0xC4CEB9FE1A85EC53;
-    key ^= key >> 33;
-    return key;
-}
-
-
-static uint64_t hashBoard(const Board& board) {
-    return murmur3_64(board.redPieces, 0x9E3779B97F4A7C15ULL * board.allPieces);
-}
-
+#include "board.h"
+#include "memo.h"
 
 struct BoardKey {
-    uint64_t red;
+    uint64_t first;
     uint64_t all;
 
     bool operator==(const BoardKey& other) const {
-        return red == other.red && all == other.all;
+        return first == other.first && all == other.all;
     }
 };
 
 
 struct BoardKeyHash {
     size_t operator()(const BoardKey& key) const {
-        Board board = {key.red, key.all};
-        return static_cast<size_t>(hashBoard(board));
+        Board board = {key.first, key.all};
+        return static_cast<size_t>(getBoardKey(board));
     }
 };
 
 
-// MEMO
-
-#define MEMO_SIZE 2097152
-#define MEMO_BITS 21
-#define MEMO_SLOT_MASK 0x001FFFFF
-
-#define DEPTH_MASK 0x3F
-#define FLAG_MASK 0xC0
-
-#define MEMO_FLAG_EXACT 0x00
-#define MEMO_FLAG_LB 0x40
-#define MEMO_FLAG_UB 0x80
-
-#define MIN_SCORE (INT8_MIN + 1)
-#define MAX_SCORE INT8_MAX
-
-// Written into every saved entry; above any real search depth
-#define BOOK_DEPTH DEPTH_MASK
-
-
-struct MemoEntry {
-    uint16_t key;
+struct CachedEntry {
     int8_t score;
     uint8_t flagAndDepth;
 };
 
-static_assert(sizeof(MemoEntry) == 4, "MemoEntry must stay 4 bytes");
-
-
-static inline uint8_t getMemoDepth(const MemoEntry& entry) {
+static inline uint8_t getCachedDepth(const CachedEntry& entry) {
     return entry.flagAndDepth & DEPTH_MASK;
 }
 
 
-static inline uint8_t getMemoFlag(const MemoEntry& entry) {
+static inline uint8_t getCachedFlag(const CachedEntry& entry) {
     return entry.flagAndDepth & FLAG_MASK;
 }
 
 
-static bool insertMemoEntry(MemoEntry& entry, uint16_t key, int8_t score, uint8_t depth, int8_t alpha, int8_t beta) {
-    // More lookahead wins the slot
-    // An empty slot has a depth of 0 and always loses
-    if (depth < getMemoDepth(entry)) return false;
+static bool insertCachedEntry(CachedEntry& entry, int8_t score, uint8_t depth, int8_t alpha, int8_t beta) {
+    if (depth < getCachedDepth(entry)) return false;
 
-    entry.key = key;
     entry.score = score;
 
     uint8_t flag;
@@ -179,22 +75,21 @@ static bool insertMemoEntry(MemoEntry& entry, uint16_t key, int8_t score, uint8_
 // The table is the artifact that ships; the map is an exact, never-evicting
 // cache so the desktop stops re-searching whatever the table dropped
 struct SearchMemo {
-    MemoEntry* table;
-    std::unordered_map<BoardKey, MemoEntry, BoardKeyHash> map;
+    Memo* table;
+    std::unordered_map<BoardKey, CachedEntry, BoardKeyHash> map;
     size_t maxEntries;
     uint8_t minDepth;
 };
 
 
-// True when the entry answers this window; same test the firmware's probe uses
-static bool useMemoEntry(const MemoEntry& entry, uint8_t depth, int8_t alpha, int8_t beta, int8_t& outScore) {
-    uint8_t entryDepth = getMemoDepth(entry);
+static bool useCachedEntry(const CachedEntry& entry, uint8_t depth, int8_t alpha, int8_t beta, int8_t& outScore) {
+    uint8_t entryDepth = getCachedDepth(entry);
     if (entryDepth == 0) return false;
     if (entryDepth < depth && entry.score == 0) return false;
 
     outScore = entry.score;
 
-    switch (getMemoFlag(entry)) {
+    switch (getCachedFlag(entry)) {
         case MEMO_FLAG_EXACT:
             return true;
         case MEMO_FLAG_LB:
@@ -207,12 +102,37 @@ static bool useMemoEntry(const MemoEntry& entry, uint8_t depth, int8_t alpha, in
 }
 
 
-// Keeps the table populated even when the map short-circuits the search
-static void mirrorToTable(MemoEntry& slot, const MemoEntry& cached, uint16_t key) {
-    if (getMemoDepth(cached) < getMemoDepth(slot)) return;
+// True when the entry answers this window; same test the firmware's probe uses.
+static bool useTableEntry(const Memo& table, uint32_t slot, uint32_t tag, uint8_t occupied,
+                          uint8_t depth, int8_t alpha, int8_t beta, int8_t& outScore) {
+    uint8_t entryDepth = getMemoDepth(table, slot);
+    if (entryDepth == 0 || getMemoTag(table, slot) != tag) return false;
 
-    slot = cached;
-    slot.key = key;
+    outScore = getMemoScore(table, slot, occupied);
+    if (entryDepth < depth && outScore == 0) return false;
+
+    switch (getMemoFlag(table, slot)) {
+        case MEMO_FLAG_EXACT:
+            return true;
+        case MEMO_FLAG_LB:
+            return outScore >= beta;
+        case MEMO_FLAG_UB:
+            return outScore <= alpha;
+        default:
+            return false;
+    }
+}
+
+
+// Keeps the table populated even when the map short-circuits the search
+static void mirrorToTable(Memo& table, uint32_t slot, const CachedEntry& cached,
+                          uint32_t tag, uint8_t occupied) {
+    uint8_t tableDepth = getMemoDepth(table, slot);
+    if (tableDepth != BOOK_DEPTH && getCachedDepth(cached) < tableDepth) return;
+
+    uint8_t scoreCode = encodeMemoScore(cached.score, occupied);
+    table.tagAndScore[slot] = tag | (static_cast<uint32_t>(scoreCode) << MEMO_SCORE_SHIFT);
+    table.flagAndDepth[slot] = cached.flagAndDepth;
 }
 
 
@@ -222,14 +142,14 @@ static void insertMapEntry(SearchMemo& memo, const BoardKey& boardKey, int8_t sc
 
     auto found = memo.map.find(boardKey);
     if (found != memo.map.end()) {
-        insertMemoEntry(found->second, 0, score, depth, alpha, beta);
+        insertCachedEntry(found->second, score, depth, alpha, beta);
         return;
     }
 
     if (memo.map.size() >= memo.maxEntries) return;
 
-    MemoEntry entry = {0, 0, 0};
-    insertMemoEntry(entry, 0, score, depth, alpha, beta);
+    CachedEntry entry = {0, 0};
+    insertCachedEntry(entry, score, depth, alpha, beta);
     memo.map.emplace(boardKey, entry);
 }
 
@@ -237,32 +157,32 @@ static void insertMapEntry(SearchMemo& memo, const BoardKey& boardKey, int8_t sc
 // SEARCH
 static const uint8_t COL_SEARCH_ORDER[7] = {3, 2, 4, 1, 5, 0, 6};
 
-static int8_t negaMaxYellow(const Board& board, SearchMemo& memo, uint8_t depth, int8_t alpha, int8_t beta);
+static int8_t negaMaxSecond(const Board& board, SearchMemo& memo, uint8_t depth, int8_t alpha, int8_t beta);
 
 
-static int8_t negaMaxRed(const Board& board, SearchMemo& memo, uint8_t depth, int8_t alpha, int8_t beta) {
-    if (containsWin(getYellowPieces(board))) {
-        return -(MAX_SCORE - __builtin_popcountll(board.allPieces));
+static int8_t negaMaxFirst(const Board& board, SearchMemo& memo, uint8_t depth, int8_t alpha, int8_t beta) {
+    uint8_t occupied = static_cast<uint8_t>(__builtin_popcountll(board.allPieces));
+    if (containsWin(getSecondPieces(board))) {
+        return -(MAX_SCORE - occupied);
     } else if (depth == 0 || isBoardFull(board)) {
         return 0;
     }
 
     int8_t originalAlpha = alpha;
-    uint64_t hash = hashBoard(board);
-    uint32_t slot = hash & MEMO_SLOT_MASK;
-    uint16_t key = (hash >> MEMO_BITS) & 0xFFFF;
-    BoardKey boardKey = {board.redPieces, board.allPieces};
-    MemoEntry& entry = memo.table[slot];
+    uint64_t key = getBoardKey(board);
+    uint32_t slot = key & MEMO_SLOT_MASK;
+    uint32_t tag = static_cast<uint32_t>(key >> MEMO_BITS);
+    BoardKey boardKey = {board.firstPieces, board.allPieces};
     int8_t cached;
 
     // The map is exact and never evicts, so it gets asked first
     auto found = memo.map.find(boardKey);
     if (found != memo.map.end()) {
-        mirrorToTable(entry, found->second, key);
-        if (useMemoEntry(found->second, depth, alpha, beta, cached)) return cached;
+        mirrorToTable(*memo.table, slot, found->second, tag, occupied);
+        if (useCachedEntry(found->second, depth, alpha, beta, cached)) return cached;
     }
 
-    if (entry.key == key && useMemoEntry(entry, depth, alpha, beta, cached)) return cached;
+    if (useTableEntry(*memo.table, slot, tag, occupied, depth, alpha, beta, cached)) return cached;
 
     int8_t score = MIN_SCORE;
     for (uint8_t i = 0; i < 7; ++i) {
@@ -271,8 +191,8 @@ static int8_t negaMaxRed(const Board& board, SearchMemo& memo, uint8_t depth, in
         if (isColumnFull(board, c)) continue;
 
         Board newBoard = board;
-        placeRedPiece(newBoard, c);
-        int8_t newScore = -negaMaxYellow(newBoard, memo, depth - 1, -beta, -alpha);
+        placeFirstPiece(newBoard, c);
+        int8_t newScore = -negaMaxSecond(newBoard, memo, depth - 1, -beta, -alpha);
 
         if (newScore > score) {
             score = newScore;
@@ -283,35 +203,35 @@ static int8_t negaMaxRed(const Board& board, SearchMemo& memo, uint8_t depth, in
         }
     }
 
-    insertMemoEntry(entry, key, score, depth, originalAlpha, beta);
+    insertMemoEntry(*memo.table, slot, tag, score, occupied, depth, originalAlpha, beta);
     insertMapEntry(memo, boardKey, score, depth, originalAlpha, beta);
     return score;
 }
 
 
-static int8_t negaMaxYellow(const Board& board, SearchMemo& memo, uint8_t depth, int8_t alpha, int8_t beta) {
-    if (containsWin(board.redPieces)) {
-        return -(MAX_SCORE - __builtin_popcountll(board.allPieces));
+static int8_t negaMaxSecond(const Board& board, SearchMemo& memo, uint8_t depth, int8_t alpha, int8_t beta) {
+    uint8_t occupied = static_cast<uint8_t>(__builtin_popcountll(board.allPieces));
+    if (containsWin(board.firstPieces)) {
+        return -(MAX_SCORE - occupied);
     } else if (depth == 0 || isBoardFull(board)) {
         return 0;
     }
 
     int8_t originalAlpha = alpha;
-    uint64_t hash = hashBoard(board);
-    uint32_t slot = hash & MEMO_SLOT_MASK;
-    uint16_t key = (hash >> MEMO_BITS) & 0xFFFF;
-    BoardKey boardKey = {board.redPieces, board.allPieces};
-    MemoEntry& entry = memo.table[slot];
+    uint64_t key = getBoardKey(board);
+    uint32_t slot = key & MEMO_SLOT_MASK;
+    uint32_t tag = static_cast<uint32_t>(key >> MEMO_BITS);
+    BoardKey boardKey = {board.firstPieces, board.allPieces};
     int8_t cached;
 
     // The map is exact and never evicts, so it gets asked first
     auto found = memo.map.find(boardKey);
     if (found != memo.map.end()) {
-        mirrorToTable(entry, found->second, key);
-        if (useMemoEntry(found->second, depth, alpha, beta, cached)) return cached;
+        mirrorToTable(*memo.table, slot, found->second, tag, occupied);
+        if (useCachedEntry(found->second, depth, alpha, beta, cached)) return cached;
     }
 
-    if (entry.key == key && useMemoEntry(entry, depth, alpha, beta, cached)) return cached;
+    if (useTableEntry(*memo.table, slot, tag, occupied, depth, alpha, beta, cached)) return cached;
 
     int8_t score = MIN_SCORE;
     for (uint8_t i = 0; i < 7; ++i) {
@@ -320,8 +240,8 @@ static int8_t negaMaxYellow(const Board& board, SearchMemo& memo, uint8_t depth,
         if (isColumnFull(board, c)) continue;
 
         Board newBoard = board;
-        placeYellowPiece(newBoard, c);
-        int8_t newScore = -negaMaxRed(newBoard, memo, depth - 1, -beta, -alpha);
+        placeSecondPiece(newBoard, c);
+        int8_t newScore = -negaMaxFirst(newBoard, memo, depth - 1, -beta, -alpha);
 
         if (newScore > score) {
             score = newScore;
@@ -332,7 +252,7 @@ static int8_t negaMaxYellow(const Board& board, SearchMemo& memo, uint8_t depth,
         }
     }
 
-    insertMemoEntry(entry, key, score, depth, originalAlpha, beta);
+    insertMemoEntry(*memo.table, slot, tag, score, occupied, depth, originalAlpha, beta);
     insertMapEntry(memo, boardKey, score, depth, originalAlpha, beta);
     return score;
 }
@@ -340,30 +260,30 @@ static int8_t negaMaxYellow(const Board& board, SearchMemo& memo, uint8_t depth,
 
 // Mirrors chooseColumn's root loop; the scores are discarded, the table writes
 // are the point
-static void scoreRootColumns(const Board& board, SearchMemo& memo, uint8_t maxDepth, bool isRed) {
+static void scoreRootColumns(const Board& board, SearchMemo& memo, uint8_t maxDepth, bool firstToMove) {
     for (uint8_t i = 0; i < 7; ++i) {
         uint8_t c = COL_SEARCH_ORDER[i];
 
         if (isColumnFull(board, c)) continue;
 
         Board newBoard = board;
-        if (isRed) {
-            placeRedPiece(newBoard, c);
+        if (firstToMove) {
+            placeFirstPiece(newBoard, c);
 
             // If a board contains a win, it will not be viewed during normal gameplay
             // so we skip it
-            if (containsWin(newBoard.redPieces) || containsWin(getYellowPieces(newBoard))) {
+            if (containsWin(newBoard.firstPieces) || containsWin(getSecondPieces(newBoard))) {
                 continue;
             }
 
-            negaMaxYellow(newBoard, memo, maxDepth - 1, MIN_SCORE, INT8_MAX);
+            negaMaxSecond(newBoard, memo, maxDepth - 1, MIN_SCORE, INT8_MAX);
         } else {
-            placeYellowPiece(newBoard, c);
-            if (containsWin(newBoard.redPieces) || containsWin(getYellowPieces(newBoard))) {
+            placeSecondPiece(newBoard, c);
+            if (containsWin(newBoard.firstPieces) || containsWin(getSecondPieces(newBoard))) {
                 continue;
             }
 
-            negaMaxRed(newBoard, memo, maxDepth - 1, MIN_SCORE, INT8_MAX);
+            negaMaxFirst(newBoard, memo, maxDepth - 1, MIN_SCORE, INT8_MAX);
         }
     }
 }
@@ -376,66 +296,67 @@ struct BookHeader {
     uint32_t entryCount;
     uint32_t depth;
     uint32_t turnsDone;
-    uint32_t reserved;
+    uint32_t layoutVersion;
     uint64_t fingerprint;
     uint64_t occupied;
 };
 
 static_assert(sizeof(BookHeader) == 40, "BookHeader must stay 40 bytes");
+static constexpr uint32_t BOOK_LAYOUT_VERSION = 2;
 
 
-// Any change to the hash or board layout moves this, so a stale book is
+// Any change to the exact key or board layout moves this, so a stale book is
 // refused rather than silently returning wrong scores
-static uint64_t hashFingerprint() {
+static uint64_t keyFingerprint() {
     Board board = {0, 0};
-    uint64_t fingerprint = hashBoard(board);
+    uint64_t fingerprint = getBoardKey(board);
 
     for (uint8_t c = 0; c < 7; ++c) {
         if (c % 2 == 0) {
-            placeRedPiece(board, c);
+            placeFirstPiece(board, c);
         } else {
-            placeYellowPiece(board, c);
+            placeSecondPiece(board, c);
         }
 
-        fingerprint = fingerprint * 0x100000001B3ULL ^ hashBoard(board);
+        fingerprint = fingerprint * 0x100000001B3ULL ^ getBoardKey(board);
     }
 
     return fingerprint;
 }
 
 
-static uint64_t countOccupied(const MemoEntry* memo) {
+static uint64_t countOccupied(const Memo& memo) {
     uint64_t occupied = 0;
     for (uint32_t i = 0; i < MEMO_SIZE; ++i) {
-        if (getMemoDepth(memo[i]) != 0) ++occupied;
+        if (getMemoDepth(memo, i) != 0) ++occupied;
     }
 
     return occupied;
 }
 
 
-// Restamped on a copy, never in place: marking the live table would make the
-// builder's own replacement policy reject every later insert
-static MemoEntry* copyAsBook(const MemoEntry* memo) {
-    MemoEntry* book = static_cast<MemoEntry*>(std::malloc(MEMO_SIZE * sizeof(MemoEntry)));
-    if (book == nullptr) return nullptr;
+// Only the depth/flag array needs a save copy. Restamping the live table would
+// make the builder's replacement policy reject every later insert.
+static uint8_t* copyFlagsAsBook(const Memo& memo) {
+    uint8_t* bookFlags = static_cast<uint8_t*>(std::malloc(MEMO_SIZE));
+    if (bookFlags == nullptr) return nullptr;
 
-    std::memcpy(book, memo, MEMO_SIZE * sizeof(MemoEntry));
+    std::memcpy(bookFlags, memo.flagAndDepth, MEMO_SIZE);
 
     // Empty slots keep depth 0 so the robot still reads them as uninitialized
     for (uint32_t i = 0; i < MEMO_SIZE; ++i) {
-        if (getMemoDepth(book[i]) != 0) {
-            book[i].flagAndDepth = getMemoFlag(book[i]) | BOOK_DEPTH;
+        if ((bookFlags[i] & DEPTH_MASK) != 0) {
+            bookFlags[i] = (bookFlags[i] & FLAG_MASK) | BOOK_DEPTH;
         }
     }
 
-    return book;
+    return bookFlags;
 }
 
 
-static bool saveBook(const std::string& path, const MemoEntry* memo, uint32_t depth, uint32_t turnsDone) {
-    MemoEntry* book = copyAsBook(memo);
-    if (book == nullptr) {
+static bool saveBook(const std::string& path, const Memo& memo, uint32_t depth, uint32_t turnsDone) {
+    uint8_t* bookFlags = copyFlagsAsBook(memo);
+    if (bookFlags == nullptr) {
         std::printf("could not allocate the save buffer\n");
         return false;
     }
@@ -443,25 +364,27 @@ static bool saveBook(const std::string& path, const MemoEntry* memo, uint32_t de
     BookHeader header;
     std::memset(&header, 0, sizeof(header));
     header.memoBits = MEMO_BITS;
-    header.entrySize = sizeof(MemoEntry);
+    header.entrySize = MEMO_ENTRY_BYTES;
     header.entryCount = MEMO_SIZE;
     header.depth = depth;
     header.turnsDone = turnsDone;
-    header.fingerprint = hashFingerprint();
+    header.layoutVersion = BOOK_LAYOUT_VERSION;
+    header.fingerprint = keyFingerprint();
     header.occupied = countOccupied(memo);
 
     std::string temp = path + ".tmp";
     FILE* file = std::fopen(temp.c_str(), "wb");
     if (file == nullptr) {
         std::printf("could not open %s for writing\n", temp.c_str());
-        std::free(book);
+        std::free(bookFlags);
         return false;
     }
 
     bool ok = std::fwrite(&header, sizeof(header), 1, file) == 1;
-    ok = ok && std::fwrite(book, sizeof(MemoEntry), MEMO_SIZE, file) == MEMO_SIZE;
+    ok = ok && std::fwrite(memo.tagAndScore, sizeof(uint32_t), MEMO_SIZE, file) == MEMO_SIZE;
+    ok = ok && std::fwrite(bookFlags, sizeof(uint8_t), MEMO_SIZE, file) == MEMO_SIZE;
     std::fclose(file);
-    std::free(book);
+    std::free(bookFlags);
 
     if (!ok) {
         std::printf("write failed, previous book left untouched\n");
@@ -474,21 +397,23 @@ static bool saveBook(const std::string& path, const MemoEntry* memo, uint32_t de
 }
 
 
-static bool loadBook(const std::string& path, MemoEntry* memo, uint32_t& depth, uint32_t& turnsDone) {
+static bool loadBook(const std::string& path, Memo& memo, uint32_t& depth, uint32_t& turnsDone) {
     FILE* file = std::fopen(path.c_str(), "rb");
     if (file == nullptr) return false;
 
     BookHeader header;
     bool ok = std::fread(&header, sizeof(header), 1, file) == 1;
 
-    if (!ok || header.memoBits != MEMO_BITS || header.entrySize != sizeof(MemoEntry) ||
-        header.entryCount != MEMO_SIZE || header.fingerprint != hashFingerprint()) {
-        std::printf("%s does not match this table or hash, ignoring it\n", path.c_str());
+    if (!ok || header.memoBits != MEMO_BITS || header.entrySize != MEMO_ENTRY_BYTES ||
+        header.entryCount != MEMO_SIZE || header.layoutVersion != BOOK_LAYOUT_VERSION ||
+        header.fingerprint != keyFingerprint()) {
+        std::printf("%s does not match this table or key, ignoring it\n", path.c_str());
         std::fclose(file);
         return false;
     }
 
-    ok = std::fread(memo, sizeof(MemoEntry), MEMO_SIZE, file) == MEMO_SIZE;
+    ok = std::fread(memo.tagAndScore, sizeof(uint32_t), MEMO_SIZE, file) == MEMO_SIZE;
+    ok = ok && std::fread(memo.flagAndDepth, sizeof(uint8_t), MEMO_SIZE, file) == MEMO_SIZE;
     std::fclose(file);
     if (!ok) return false;
 
@@ -501,7 +426,7 @@ static bool loadBook(const std::string& path, MemoEntry* memo, uint32_t& depth, 
 // -------------------------------------------------------------- driver ----
 
 static bool isGameOver(const Board& board) {
-    return containsWin(board.redPieces) || containsWin(getYellowPieces(board)) || isBoardFull(board);
+    return containsWin(board.firstPieces) || containsWin(getSecondPieces(board)) || isBoardFull(board);
 }
 
 
@@ -518,14 +443,14 @@ static std::vector<Board> expandFrontier(const std::vector<Board>& frontier, uin
 
             Board child = board;
             if (turn % 2 == 0) {
-                placeRedPiece(child, c);
+                placeFirstPiece(child, c);
             } else {
-                placeYellowPiece(child, c);
+                placeSecondPiece(child, c);
             }
 
             if (isGameOver(child)) continue;
 
-            BoardKey key = {child.redPieces, child.allPieces};
+            BoardKey key = {child.firstPieces, child.allPieces};
             if (seen.insert(key).second) next.push_back(child);
         }
     }
@@ -575,7 +500,7 @@ int main(int argc, char** argv) {
         std::printf("max-turn clamped to %u by depth %u\n", maxTurn, depth);
     }
 
-    MemoEntry* table = static_cast<MemoEntry*>(std::calloc(MEMO_SIZE, sizeof(MemoEntry)));
+    Memo* table = initMemo();
     if (table == nullptr) {
         std::printf("could not allocate %u entries\n", static_cast<unsigned>(MEMO_SIZE));
         return 1;
@@ -584,7 +509,7 @@ int main(int argc, char** argv) {
     uint32_t startTurn = 0;
     if (resume) {
         uint32_t savedDepth = depth;
-        if (loadBook(outPath, table, savedDepth, startTurn)) {
+        if (loadBook(outPath, *table, savedDepth, startTurn)) {
             std::printf("resumed %s at turn %u (depth %u)\n", outPath.c_str(), startTurn, savedDepth);
             depth = savedDepth;
         }
@@ -597,14 +522,14 @@ int main(int argc, char** argv) {
 
     std::printf("depth %u, turns 0..%u, %u entries, %u byte table\n",
                 depth, maxTurn, static_cast<unsigned>(MEMO_SIZE),
-                static_cast<unsigned>(MEMO_SIZE * sizeof(MemoEntry)));
+                static_cast<unsigned>(MEMO_SIZE * MEMO_ENTRY_BYTES));
     std::printf("map caches depth >= %u, capped at %zu entries\n", mapMinDepth, mapMaxEntries);
 
     std::vector<Board> frontier;
     frontier.push_back(Board{0, 0});
 
     auto lastSave = std::chrono::steady_clock::now();
-    uint64_t previousOccupied = countOccupied(table);
+    uint64_t previousOccupied = countOccupied(*table);
 
     for (uint32_t turn = 0; turn <= maxTurn && !frontier.empty(); ++turn) {
         // Skipping the search still rebuilds the frontier a resumed run needs
@@ -615,21 +540,21 @@ int main(int argc, char** argv) {
 
         auto turnStart = std::chrono::steady_clock::now();
         uint8_t maxDepth = static_cast<uint8_t>(depth - turn);
-        bool isRed = (turn % 2 == 0);
+        bool firstToMove = (turn % 2 == 0);
 
         for (size_t i = 0; i < frontier.size(); ++i) {
-            scoreRootColumns(frontier[i], memo, maxDepth, isRed);
+            scoreRootColumns(frontier[i], memo, maxDepth, firstToMove);
 
             auto now = std::chrono::steady_clock::now();
             if (std::chrono::duration_cast<std::chrono::seconds>(now - lastSave).count() >= saveSeconds) {
-                saveBook(outPath, table, depth, turn);
+                saveBook(outPath, *table, depth, turn);
                 lastSave = now;
                 std::printf("  checkpoint at turn %u, %zu/%zu positions\n", turn, i + 1, frontier.size());
                 std::fflush(stdout);
             }
         }
 
-        uint64_t occupied = countOccupied(table);
+        uint64_t occupied = countOccupied(*table);
         double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - turnStart).count();
 
         std::printf("turn %2u  depth %2u  %9zu positions  +%8llu slots  %6.2f%% full"
@@ -643,13 +568,13 @@ int main(int argc, char** argv) {
         std::fflush(stdout);
 
         previousOccupied = occupied;
-        saveBook(outPath, table, depth, turn + 1);
+        saveBook(outPath, *table, depth, turn + 1);
         lastSave = std::chrono::steady_clock::now();
 
         frontier = expandFrontier(frontier, turn);
     }
 
     std::printf("wrote %s\n", outPath.c_str());
-    std::free(table);
+    freeMemo(table);
     return 0;
 }

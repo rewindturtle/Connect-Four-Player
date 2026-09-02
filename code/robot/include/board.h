@@ -12,13 +12,24 @@
 
 
 struct Board {
-    uint64_t redPieces;
+    // Pieces are stored by turn order, not display colour. This keeps search
+    // and memoization independent of whether the first player is red/yellow
+    // or controlled by the robot/human.
+    uint64_t firstPieces;
     uint64_t allPieces;
 };
 
 
-inline uint64_t getYellowPieces(const Board& board) {
-    return board.redPieces ^ board.allPieces;
+inline uint64_t getSecondPieces(const Board& board) {
+    return board.firstPieces ^ board.allPieces;
+}
+
+inline uint64_t getRedPieces(const Board& board, bool firstIsRed) {
+    return firstIsRed ? board.firstPieces : getSecondPieces(board);
+}
+
+inline uint64_t getYellowPieces(const Board& board, bool firstIsRed) {
+    return firstIsRed ? getSecondPieces(board) : board.firstPieces;
 }
 
 inline bool isPieceRowCol(uint64_t pieces, uint8_t row, uint8_t col) {
@@ -50,8 +61,12 @@ inline bool isBoardFull(const Board& board) {
 }
 
 bool containsWin(uint64_t pieces);
-void placeRedPiece(Board& board, uint8_t col);
-void placeYellowPiece(Board& board, uint8_t col);
-uint64_t hashBoard(const Board& board);
+void placeFirstPiece(Board& board, uint8_t col);
+void placeSecondPiece(Board& board, uint8_t col);
+
+// A collision-free rank of every gravity-valid board with alternating piece
+// counts, reversibly mixed across 47 bits for an even memo-table distribution.
+// The first player is implied by firstPieces; display colour is not part of it.
+uint64_t getBoardKey(const Board& board);
 
 #endif // BOARD_H
