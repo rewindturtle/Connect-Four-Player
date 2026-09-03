@@ -26,6 +26,14 @@
 #define CLENCH_MAX_WAIT 3500
 #define CLENCH_HOLD_MS 350
 
+#define THINKING_SCAN_PERIOD_MS 1600.f
+#define PLEASED_BOB_PERIOD_MS 900.f
+#define PLEASED_BOB_HEIGHT 1.5f
+#define WORRIED_SHAKE_PERIOD_MS 180.f
+#define WORRIED_SHAKE_WIDTH 1.5f
+
+static constexpr float FACE_TWO_PI = 6.28318530718f;
+
 
 struct PersonalityProfile {
     EyeParams leftEye;
@@ -186,6 +194,11 @@ static float phaseProgress(uint32_t now, uint32_t start, uint32_t durationMs) {
 }
 
 
+static bool timeReached(uint32_t now, uint32_t target) {
+    return static_cast<int32_t>(now - target) >= 0;
+}
+
+
 static Colour blendColour(const Colour& base, const Colour& tint, uint8_t tintAmount) {
     uint16_t baseAmount = 255 - tintAmount;
     return {
@@ -193,6 +206,39 @@ static Colour blendColour(const Colour& base, const Colour& tint, uint8_t tintAm
         static_cast<uint8_t>((base.g * baseAmount + tint.g * tintAmount) / 255),
         static_cast<uint8_t>((base.b * baseAmount + tint.b * tintAmount) / 255)
     };
+}
+
+
+static void applyThinking(EyeParams& le, EyeParams& re, EyebrowParams& lb, EyebrowParams& rb,
+                          MouthParams& mouth, Colour& colour) {
+    le = {43.f, 47.f, 28.f, 21.f, -2.f, 0.f, EYE_RECT};
+    re = {97.f, 47.f, 28.f, 21.f, 2.f, 0.f, EYE_RECT};
+    lb = {25.f, 25.f, 59.f, 20.f, 4.f};
+    rb = {81.f, 20.f, 115.f, 25.f, 4.f};
+    mouth = {70.f, 91.f, 22.f, 5.f, 0.f, 0.f, MOUTH_DOTS};
+    colour = blendColour(colour, {118, 149, 245}, 72);
+}
+
+
+static void applyPleased(EyeParams& le, EyeParams& re, EyebrowParams& lb, EyebrowParams& rb,
+                         MouthParams& mouth, Colour& colour) {
+    le = {43.f, 49.f, 35.f, 19.f, 0.f, 5.f, EYE_ARC};
+    re = {97.f, 49.f, 35.f, 19.f, 0.f, 5.f, EYE_ARC};
+    lb = {};
+    rb = {};
+    mouth = {70.f, 87.f, 54.f, 0.f, 14.f, 5.f, MOUTH_CURVE};
+    colour = blendColour(colour, {111, 214, 124}, 72);
+}
+
+
+static void applyWorried(EyeParams& le, EyeParams& re, EyebrowParams& lb, EyebrowParams& rb,
+                         MouthParams& mouth, Colour& colour) {
+    le = {43.f, 49.f, 31.f, 29.f, 0.f, 0.f, EYE_RECT};
+    re = {97.f, 49.f, 31.f, 29.f, 0.f, 0.f, EYE_RECT};
+    lb = {24.f, 24.f, 59.f, 17.f, 5.f};
+    rb = {81.f, 17.f, 116.f, 24.f, 5.f};
+    mouth = {70.f, 96.f, 46.f, 0.f, -13.f, 5.f, MOUTH_CURVE};
+    colour = blendColour(colour, {238, 163, 73}, 80);
 }
 
 
@@ -251,6 +297,15 @@ void Face::_loadPose() {
         case FACE_ANGRY:
             applyAngry(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
             break;
+        case FACE_THINKING:
+            applyThinking(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
+            break;
+        case FACE_PLEASED:
+            applyPleased(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
+            break;
+        case FACE_WORRIED:
+            applyWorried(_leftEye, _rightEye, _leftBrow, _rightBrow, _mouth, _colour);
+            break;
     }
 }
 
@@ -266,18 +321,51 @@ void Face::_resetStateInfo() {
         case FACE_ANGRY:
             _info.angry = {};
             break;
+        case FACE_THINKING:
+            _info.thinking = {};
+            break;
+        case FACE_PLEASED:
+            _info.pleased = {};
+            break;
+        case FACE_WORRIED:
+            _info.worried = {};
+            break;
     }
 }
 
 
 void Face::setState(FaceState state) {
-    if (state == _state) return;
+    bool changed = state != _state;
+    _stateTimed = false;
+    _stateExpiresAt = 0;
+    if (!changed) return;
 
     _state = state;
     _offset = {0.f, 0.f};
     _loadPose();
     _resetStateInfo();
     _requiresDraw = true;
+}
+
+
+void Face::triggerReaction(FaceState state, uint32_t now, uint32_t durationMs) {
+    if (durationMs == 0) {
+        setState(state);
+        return;
+    }
+
+    _state = state;
+    _stateTimed = true;
+    _stateExpiresAt = now + durationMs;
+    _offset = {0.f, 0.f};
+    _loadPose();
+    _resetStateInfo();
+    _requiresDraw = true;
+}
+
+
+void Face::clearReaction() {
+    setState(FACE_NEUTRAL);
 }
 
 
@@ -384,6 +472,32 @@ void Face::_updateGlance(GlanceParams& glance, uint32_t now) {
 }
 
 
+void Face::_updateThinking(uint32_t now) {
+    float phase = FACE_TWO_PI * (static_cast<float>(now % static_cast<uint32_t>(THINKING_SCAN_PERIOD_MS))
+                                 / THINKING_SCAN_PERIOD_MS);
+    float x = -5.f + 2.5f * sinf(phase);
+    float y = 3.f + cosf(phase);
+    _leftEye.x += x;
+    _leftEye.y += y;
+    _rightEye.x += x;
+    _rightEye.y += y;
+}
+
+
+void Face::_updatePleased(uint32_t now) {
+    float phase = FACE_TWO_PI * (static_cast<float>(now % static_cast<uint32_t>(PLEASED_BOB_PERIOD_MS))
+                                 / PLEASED_BOB_PERIOD_MS);
+    _offset.y = -0.5f * PLEASED_BOB_HEIGHT * (1.f + sinf(phase));
+}
+
+
+void Face::_updateWorried(uint32_t now) {
+    float phase = FACE_TWO_PI * (static_cast<float>(now % static_cast<uint32_t>(WORRIED_SHAKE_PERIOD_MS))
+                                 / WORRIED_SHAKE_PERIOD_MS);
+    _offset.x = WORRIED_SHAKE_WIDTH * sinf(phase);
+}
+
+
 void Face::_updateHop(HopParams& hop, uint32_t now) {
     if (hop.nextHopTime == 0) {
         hop.nextHopTime = now + randRange(HOP_MIN_WAIT, HOP_MAX_WAIT);
@@ -476,6 +590,10 @@ void Face::_updateRequiresDraw() {
 
 
 void Face::update(uint32_t now) {
+    if (_stateTimed && timeReached(now, _stateExpiresAt)) {
+        clearReaction();
+    }
+
     _loadPose();
 
     switch (_state) {
@@ -493,6 +611,24 @@ void Face::update(uint32_t now) {
             _updateBlink(_info.angry.blink, now);
             _applyBlink(_info.angry.blink, now);
             _updateClench(_info.angry.clench, now);
+            break;
+
+        case FACE_THINKING:
+            _updateBlink(_info.thinking.blink, now);
+            _applyBlink(_info.thinking.blink, now);
+            _updateThinking(now);
+            break;
+
+        case FACE_PLEASED:
+            _updateBlink(_info.pleased.blink, now);
+            _applyBlink(_info.pleased.blink, now);
+            _updatePleased(now);
+            break;
+
+        case FACE_WORRIED:
+            _updateBlink(_info.worried.blink, now);
+            _applyBlink(_info.worried.blink, now);
+            _updateWorried(now);
             break;
     }
 

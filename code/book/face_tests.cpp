@@ -109,10 +109,72 @@ static void testDecorationsSurviveEmotions() {
 }
 
 
+static void testReactionPoses() {
+    Face& face = Face::getFace();
+    face.setPersonality(FACE_PERSONALITY_COPYCAT);
+
+    face.setState(FACE_THINKING);
+    face.update(0);
+    assert(face.getMouthParams().shape == MOUTH_DOTS);
+    assert(face.getLeftEyeParams().x < 43.f);
+    assert(face.getLeftEyeParams().y > 47.f);
+    assert(isVisible(face.getDecorations().leftEar));
+
+    face.setState(FACE_PLEASED);
+    face.update(0);
+    assert(face.getLeftEyeParams().shape == EYE_ARC);
+    assert(face.getMouthParams().shape == MOUTH_CURVE);
+    assert(face.getMouthParams().curve > 0.f);
+    assert(isVisible(face.getDecorations().leftEar));
+
+    face.setState(FACE_WORRIED);
+    face.update(45);
+    assert(face.getMouthParams().shape == MOUTH_CURVE);
+    assert(face.getMouthParams().curve < 0.f);
+    assert(face.getLeftBrowParams().y2 < face.getLeftBrowParams().y1);
+    assert(face.getOffset().x > 0.f);
+    assert(isVisible(face.getDecorations().leftEar));
+
+    face.setState(FACE_CELEBRATING);
+    face.update(0);
+    assert(face.getMouthParams().shape == MOUTH_D_OUTLINE);
+    assert(isVisible(face.getDecorations().leftEar));
+
+    face.clearReaction();
+    face.setPersonality(FACE_PERSONALITY_STANDARD);
+}
+
+
+static void testTimedReactionLifecycle() {
+    Face& face = Face::getFace();
+    face.setState(FACE_NEUTRAL);
+
+    face.triggerReaction(FACE_PLEASED, 100, 100);
+    assert(face.getState() == FACE_PLEASED);
+
+    // Retriggering the same reaction restarts both its animation and lifetime.
+    face.triggerReaction(FACE_PLEASED, 150, 100);
+    face.update(200);
+    assert(face.getState() == FACE_PLEASED);
+
+    face.update(250);
+    assert(face.getState() == FACE_NEUTRAL);
+
+    // A zero duration is explicitly persistent, for thinking or game-over use.
+    face.triggerReaction(FACE_THINKING, 300, 0);
+    face.update(10000);
+    assert(face.getState() == FACE_THINKING);
+    face.clearReaction();
+    assert(face.getState() == FACE_NEUTRAL);
+}
+
+
 int main() {
     testProfilesAreDistinct();
     testSignatureDecorations();
     testDecorationsSurviveEmotions();
+    testReactionPoses();
+    testTimedReactionLifecycle();
     std::puts("face tests passed");
     return 0;
 }

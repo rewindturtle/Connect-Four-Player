@@ -264,6 +264,14 @@ static void drawMouth(LovyanGFX& gfx, const MouthParams& mouth, const FaceOffset
                             mouth.strokeWidth, colour);
             break;
         }
+        case MOUTH_DOTS: {
+            int radius = static_cast<int>(0.5f * mouth.height);
+            if (radius < 1) radius = 1;
+            gfx.fillCircle(static_cast<int>(mx - hw), static_cast<int>(my), radius, colour);
+            gfx.fillCircle(static_cast<int>(mx), static_cast<int>(my), radius, colour);
+            gfx.fillCircle(static_cast<int>(mx + hw), static_cast<int>(my), radius, colour);
+            break;
+        }
     }
 }
 

@@ -15,7 +15,8 @@ enum MouthShape : uint8_t {
     MOUTH_BAR,
     MOUTH_CURVE,
     MOUTH_D_OUTLINE,
-    MOUTH_SMIRK
+    MOUTH_SMIRK,
+    MOUTH_DOTS
 };
 
 
@@ -229,7 +230,10 @@ struct ClenchParams {
 enum FaceState : uint8_t {
     FACE_NEUTRAL,
     FACE_CELEBRATING,
-    FACE_ANGRY
+    FACE_ANGRY,
+    FACE_THINKING,
+    FACE_PLEASED,
+    FACE_WORRIED
 };
 
 
@@ -267,10 +271,28 @@ struct AngryFaceParams {
 };
 
 
+struct ThinkingFaceParams {
+    BlinkParams blink;
+};
+
+
+struct PleasedFaceParams {
+    BlinkParams blink;
+};
+
+
+struct WorriedFaceParams {
+    BlinkParams blink;
+};
+
+
 union FaceInfo {
     NeutralFaceParams neutral;
     CelebratingFaceParams celebrating;
     AngryFaceParams angry;
+    ThinkingFaceParams thinking;
+    PleasedFaceParams pleased;
+    WorriedFaceParams worried;
 
     FaceInfo() {
         memset(static_cast<void*>(this), 0, sizeof(FaceInfo));
@@ -293,6 +315,8 @@ class Face {
         FaceInfo _info;
         FaceState _state;
         FacePersonality _personality;
+        uint32_t _stateExpiresAt = 0;
+        bool _stateTimed = false;
         FaceSnapshot _previous = {};
         bool _requiresDraw = true;
 
@@ -303,6 +327,9 @@ class Face {
         void _scheduleBlink(BlinkParams& blink, uint32_t now);
         void _applyBlink(const BlinkParams& blink, uint32_t now);
         void _updateGlance(GlanceParams& glance, uint32_t now);
+        void _updateThinking(uint32_t now);
+        void _updatePleased(uint32_t now);
+        void _updateWorried(uint32_t now);
         void _updateHop(HopParams& hop, uint32_t now);
         void _updateClench(ClenchParams& clench, uint32_t now);
 
@@ -312,6 +339,8 @@ class Face {
         void update(uint32_t now);
 
         void setState(FaceState state);
+        void triggerReaction(FaceState state, uint32_t now, uint32_t durationMs);
+        void clearReaction();
         inline FaceState getState() const {return _state;}
         void setPersonality(FacePersonality personality);
         inline FacePersonality getPersonality() const {return _personality;}
