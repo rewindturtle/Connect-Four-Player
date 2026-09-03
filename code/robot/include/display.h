@@ -39,18 +39,20 @@ class Display {
         bool _faceNeedsRedraw;
         bool _touchWasPressed;
         uint8_t _maxSearchDepth;
+        uint8_t _maxThinkingTimeSeconds;
 
         void _drawFace(uint32_t now);
         void _showFace(FaceState state, float x, float y);
         void _drawBackground();
         void _drawUIButton(const char* text, int x, int y, int width, int height);
         void _drawUILabel(const char* text, int x, int y, bool compact = false);
-        void _drawMaxSearchDepthValue();
+        void _drawSettingValue(uint8_t value, int y, const char* suffix = "");
         void _drawMainMenuScreen();
         void _drawSettingsMenuScreen();
         void _handleTouch(uint16_t x, uint16_t y);
         void _selectPlayStyle(int8_t direction);
         void _selectMaxSearchDepth(int8_t direction);
+        void _selectMaxThinkingTime(int8_t direction);
     public:
         Display();
 
@@ -65,6 +67,7 @@ class Display {
         inline ScreenState getScreen() const {return _screenState;}
         void setFacePlayStyle(PlayStyle playStyle);
         inline uint8_t getMaxSearchDepth() const {return _maxSearchDepth;}
+        inline uint8_t getMaxThinkingTimeSeconds() const {return _maxThinkingTimeSeconds;}
 };
 
 #endif // DISPLAY_H

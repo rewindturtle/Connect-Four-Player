@@ -27,27 +27,31 @@
 #define BUTTON_GAP 16
 #define BUTTON_PLAY_X (240 - BUTTON_WIDTH - (BUTTON_GAP / 2))
 #define BUTTON_SETTINGS_X (240 + (BUTTON_GAP / 2))
+#define MENU_FACE_Y 100.f
 #define MAIN_MENU_BUTTON_Y 210
 
-#define SETTINGS_FACE_Y 82.f
-#define SETTINGS_PLAY_STYLE_Y 194
-#define SETTINGS_MAX_DEPTH_Y 234
-#define SETTINGS_ROW_HEIGHT 36
-#define SETTINGS_TITLE_X 68
-#define SETTINGS_LEFT_ARROW_X 140
-#define SETTINGS_ARROW_WIDTH 38
-#define SETTINGS_STYLE_NAME_X 276
-#define SETTINGS_RIGHT_ARROW_X 378
-#define SETTINGS_VALUE_X 182
-#define SETTINGS_VALUE_WIDTH 192
+#define SETTINGS_PLAY_STYLE_Y 210
+#define SETTINGS_MAX_DEPTH_Y 238
+#define SETTINGS_MAX_TIME_Y 266
+#define SETTINGS_ROW_HEIGHT 26
+#define SETTINGS_TITLE_X 90
+#define SETTINGS_LEFT_ARROW_X 200
+#define SETTINGS_ARROW_WIDTH 30
+#define SETTINGS_STYLE_NAME_X 287
+#define SETTINGS_RIGHT_ARROW_X 344
+#define SETTINGS_VALUE_X 232
+#define SETTINGS_VALUE_WIDTH 110
 #define SETTINGS_BACK_X 388
-#define SETTINGS_BACK_Y 278
+#define SETTINGS_BACK_Y 293
 #define SETTINGS_BACK_WIDTH 80
-#define SETTINGS_BACK_HEIGHT 34
+#define SETTINGS_BACK_HEIGHT 26
 
 #define MIN_SEARCH_DEPTH 1
 #define MAX_SEARCH_DEPTH 42
 #define DEFAULT_MAX_SEARCH_DEPTH 6
+#define MIN_THINKING_TIME_SECONDS 1
+#define MAX_THINKING_TIME_SECONDS 99
+#define DEFAULT_MAX_THINKING_TIME_SECONDS 10
 
 
 static const char* const PLAY_STYLE_NAMES[PLAY_STYLE_COUNT] = {
@@ -346,7 +350,7 @@ void Display::_drawUIButton(const char* text, int x, int y, int width, int heigh
 void Display::_drawUILabel(const char* text, int x, int y, bool compact) {
     Colour faceColour = Face::getFace().getPersonalityColour();
     if (compact) {
-        _canvas.setFont(&fonts::Font0);
+        _canvas.setFont(&fonts::Font2);
     } else {
         _canvas.setFont(&fonts::FreeSans9pt7b);
     }
@@ -356,22 +360,22 @@ void Display::_drawUILabel(const char* text, int x, int y, bool compact) {
 }
 
 
-void Display::_drawMaxSearchDepthValue() {
-    char depthText[3];
-    snprintf(depthText, sizeof(depthText), "%u", static_cast<unsigned>(_maxSearchDepth));
+void Display::_drawSettingValue(uint8_t value, int y, const char* suffix) {
+    char valueText[6];
+    snprintf(valueText, sizeof(valueText), "%u%s", static_cast<unsigned>(value), suffix);
 
     Colour faceColour = Face::getFace().getPersonalityColour();
     _settingsValueSprite.fillSprite(COLOUR_BG);
     _settingsValueSprite.setFont(&fonts::FreeSans9pt7b);
     _settingsValueSprite.setTextColor(colourToRgb565(lightenColour(faceColour, 76)));
     _settingsValueSprite.setTextDatum(textdatum_t::middle_centre);
-    _settingsValueSprite.drawString(depthText, SETTINGS_VALUE_WIDTH / 2, SETTINGS_ROW_HEIGHT / 2);
-    _settingsValueSprite.pushSprite(SETTINGS_VALUE_X, SETTINGS_MAX_DEPTH_Y);
+    _settingsValueSprite.drawString(valueText, SETTINGS_VALUE_WIDTH / 2, SETTINGS_ROW_HEIGHT / 2);
+    _settingsValueSprite.pushSprite(SETTINGS_VALUE_X, y);
 }
 
 
 void Display::_drawMainMenuScreen() {
-    _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, 100.f);
+    _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, MENU_FACE_Y);
 
     _drawBackground();
     _drawUIButton("PLAY", BUTTON_PLAY_X, MAIN_MENU_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT);
@@ -382,13 +386,16 @@ void Display::_drawMainMenuScreen() {
 
 void Display::_drawSettingsMenuScreen() {
     if (!_faceTransform.visible) {
-        _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, SETTINGS_FACE_Y);
-    } else {
-        _faceTransform.y = SETTINGS_FACE_Y;
+        _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, MENU_FACE_Y);
     }
+    _faceTransform.y = MENU_FACE_Y;
+    _faceTransform.scaleX = 1.f;
+    _faceTransform.scaleY = 1.f;
 
     char depthText[3];
     snprintf(depthText, sizeof(depthText), "%u", static_cast<unsigned>(_maxSearchDepth));
+    char timeText[6];
+    snprintf(timeText, sizeof(timeText), "%u s", static_cast<unsigned>(_maxThinkingTimeSeconds));
 
     _drawBackground();
     _drawUILabel("PLAY STYLE", SETTINGS_TITLE_X,
@@ -407,6 +414,15 @@ void Display::_drawSettingsMenuScreen() {
     _drawUILabel(depthText, SETTINGS_STYLE_NAME_X,
                  SETTINGS_MAX_DEPTH_Y + (SETTINGS_ROW_HEIGHT / 2));
     _drawUIButton(">", SETTINGS_RIGHT_ARROW_X, SETTINGS_MAX_DEPTH_Y,
+                  SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT);
+
+    _drawUILabel("MAX THINKING TIME", SETTINGS_TITLE_X,
+                 SETTINGS_MAX_TIME_Y + (SETTINGS_ROW_HEIGHT / 2), true);
+    _drawUIButton("<", SETTINGS_LEFT_ARROW_X, SETTINGS_MAX_TIME_Y,
+                  SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT);
+    _drawUILabel(timeText, SETTINGS_STYLE_NAME_X,
+                 SETTINGS_MAX_TIME_Y + (SETTINGS_ROW_HEIGHT / 2));
+    _drawUIButton(">", SETTINGS_RIGHT_ARROW_X, SETTINGS_MAX_TIME_Y,
                   SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT);
 
     _drawUIButton("BACK", SETTINGS_BACK_X, SETTINGS_BACK_Y, SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT);
@@ -432,7 +448,18 @@ void Display::_selectMaxSearchDepth(int8_t direction) {
     if (depth == _maxSearchDepth) return;
 
     _maxSearchDepth = static_cast<uint8_t>(depth);
-    _drawMaxSearchDepthValue();
+    _drawSettingValue(_maxSearchDepth, SETTINGS_MAX_DEPTH_Y);
+}
+
+
+void Display::_selectMaxThinkingTime(int8_t direction) {
+    int seconds = static_cast<int>(_maxThinkingTimeSeconds) + direction;
+    if (seconds < MIN_THINKING_TIME_SECONDS) seconds = MIN_THINKING_TIME_SECONDS;
+    if (seconds > MAX_THINKING_TIME_SECONDS) seconds = MAX_THINKING_TIME_SECONDS;
+    if (seconds == _maxThinkingTimeSeconds) return;
+
+    _maxThinkingTimeSeconds = static_cast<uint8_t>(seconds);
+    _drawSettingValue(_maxThinkingTimeSeconds, SETTINGS_MAX_TIME_Y, " s");
 }
 
 
@@ -456,6 +483,12 @@ void Display::_handleTouch(uint16_t x, uint16_t y) {
             } else if (pointInRect(x, y, SETTINGS_RIGHT_ARROW_X, SETTINGS_MAX_DEPTH_Y,
                                    SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
                 _selectMaxSearchDepth(1);
+            } else if (pointInRect(x, y, SETTINGS_LEFT_ARROW_X, SETTINGS_MAX_TIME_Y,
+                                   SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                _selectMaxThinkingTime(-1);
+            } else if (pointInRect(x, y, SETTINGS_RIGHT_ARROW_X, SETTINGS_MAX_TIME_Y,
+                                   SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                _selectMaxThinkingTime(1);
             } else if (pointInRect(x, y, SETTINGS_BACK_X, SETTINGS_BACK_Y,
                                    SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT)) {
                 setScreen(SCREEN_MAIN_MENU);
@@ -492,7 +525,8 @@ Display::Display()
       _faceRefreshTimer(0),
       _faceNeedsRedraw(false),
       _touchWasPressed(false),
-      _maxSearchDepth(DEFAULT_MAX_SEARCH_DEPTH) {}
+      _maxSearchDepth(DEFAULT_MAX_SEARCH_DEPTH),
+      _maxThinkingTimeSeconds(DEFAULT_MAX_THINKING_TIME_SECONDS) {}
 
 
 void Display::init() {
