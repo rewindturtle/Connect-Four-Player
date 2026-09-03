@@ -56,7 +56,7 @@ struct PersonalityProfile {
 };
 
 
-static const PersonalityProfile PERSONALITY_PROFILES[FACE_PERSONALITY_COUNT] = {
+static const PersonalityProfile PERSONALITY_PROFILES[PLAY_STYLE_COUNT] = {
     // Standard: calm and attentive.
     {
         {43.f, 43.f, 26.f, 26.f, 0.f, 0.f, EYE_RECT},
@@ -271,7 +271,7 @@ static void loadAngryClench(EyebrowParams& lb, EyebrowParams& rb, MouthParams& m
 }
 
 
-Face::Face() : _state(FACE_NEUTRAL), _personality(FACE_PERSONALITY_STANDARD) {
+Face::Face() : _state(FACE_NEUTRAL), _personality(STANDARD_PLAY_STYLE) {
     _offset = {0.f, 0.f};
     _loadPose();
     _info.neutral = {};
@@ -369,8 +369,8 @@ void Face::clearReaction() {
 }
 
 
-void Face::setPersonality(FacePersonality personality) {
-    if (personality >= FACE_PERSONALITY_COUNT || personality == _personality) return;
+void Face::setPersonality(PlayStyle personality) {
+    if (personality >= PLAY_STYLE_COUNT || personality == _personality) return;
 
     _personality = personality;
     _offset = {0.f, 0.f};

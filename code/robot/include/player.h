@@ -4,18 +4,24 @@
 #include "board.h"
 #include "memo.h"
 
-#define STANDARD_PLAY_STYLE 0
-#define MISTAKES_PLAY_STYLE 1
-#define PROLONG_PLAY_STYLE 2
-#define CENTER_PLAY_STYLE 3
-#define EDGE_PLAY_STYLE 4
-#define STACKER_PLAY_STYLE 5
-#define SPREADER_PLAY_STYLE 6
-#define PACIFIST_PLAY_STYLE 7
-#define COPYCAT_PLAY_STYLE 8
-#define TRAP_PLAY_STYLE 9
+#include <atomic>
 
 #define NO_COLUMN 0xFF
+
+
+enum PlayStyle : uint8_t {
+    STANDARD_PLAY_STYLE,
+    MISTAKES_PLAY_STYLE,
+    PROLONG_PLAY_STYLE,
+    CENTER_PLAY_STYLE,
+    EDGE_PLAY_STYLE,
+    STACKER_PLAY_STYLE,
+    SPREADER_PLAY_STYLE,
+    PACIFIST_PLAY_STYLE,
+    COPYCAT_PLAY_STYLE,
+    TRAP_PLAY_STYLE,
+    PLAY_STYLE_COUNT
+};
 
 
 // Describes the policy that actually selected a move. A play style can fall
@@ -45,27 +51,50 @@ struct MoveDecision {
 
 static_assert(sizeof(MoveDecision) == 4, "MoveDecision should remain byte-packed");
 
+class Player {
+    private:
+        Memo* _memo;
+        float _mistakeProb;
+        uint8_t _maxDepth;
+        uint8_t _panicDepth;
+        uint8_t _turn;
+        PlayStyle _playStyle;
+        uint8_t _lastOpponentColumn;
+        // Turn order and display colour are independent. Search only uses
+        // _isFirst; _isRed is presentation/game configuration state.
+        bool _isFirst;
+        bool _isRed;
+        bool _canPanic;
+        std::atomic<bool> _forceStop;
+    public:
+        explicit Player(Memo* memo = nullptr);
 
-struct Player {
-    Memo* memo = nullptr;
-    float mistakeProb = 0.2f;
-    uint8_t maxDepth = 4;
-    uint8_t panicDepth = 8;
-    uint8_t turn = 0;
-    uint8_t playStyle = STANDARD_PLAY_STYLE;
-    uint8_t lastOpponentColumn = NO_COLUMN;
-    // Turn order and display colour are independent. Search only uses isFirst;
-    // isRed is presentation/game configuration state.
-    bool isFirst = true;
-    bool isRed = true;
-    bool canPanic = false;
-    volatile bool forceStop = false;
+        MoveDecision chooseMove(const Board& board) const;
+        uint8_t chooseColumn(const Board& board) const;
+        void idleSearch(const Board& board) const;
+
+        inline void setMemo(Memo* memo) {_memo = memo;}
+        inline Memo* getMemo() const {return _memo;}
+        inline void setMistakeProb(float probability) {_mistakeProb = probability;}
+        inline float getMistakeProb() const {return _mistakeProb;}
+        inline void setMaxDepth(uint8_t depth) {_maxDepth = depth;}
+        inline uint8_t getMaxDepth() const {return _maxDepth;}
+        inline void setPanicDepth(uint8_t depth) {_panicDepth = depth;}
+        inline uint8_t getPanicDepth() const {return _panicDepth;}
+        inline void setTurn(uint8_t turn) {_turn = turn;}
+        inline uint8_t getTurn() const {return _turn;}
+        inline void setPlayStyle(PlayStyle playStyle) {_playStyle = playStyle;}
+        inline PlayStyle getPlayStyle() const {return _playStyle;}
+        inline void setLastOpponentColumn(uint8_t column) {_lastOpponentColumn = column;}
+        inline uint8_t getLastOpponentColumn() const {return _lastOpponentColumn;}
+        inline void setFirst(bool isFirst) {_isFirst = isFirst;}
+        inline bool isFirst() const {return _isFirst;}
+        inline void setRed(bool isRed) {_isRed = isRed;}
+        inline bool isRed() const {return _isRed;}
+        inline void setCanPanic(bool canPanic) {_canPanic = canPanic;}
+        inline bool canPanic() const {return _canPanic;}
+        inline void setForceStop(bool forceStop) {_forceStop = forceStop;}
+        inline bool shouldStop() const {return _forceStop;}
 };
-
-
-MoveDecision chooseMove(const Player& player, const Board& board);
-uint8_t chooseColumn(const Player& player, const Board& board);
-void idleSearch(const Player& player, const Board& board);
-
 
 #endif // PLAYER_H

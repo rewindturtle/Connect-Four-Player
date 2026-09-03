@@ -1,11 +1,14 @@
 #include "display.h"
 
 
+Display display;
+
+
 void setup() {
-    initDisplay();
+    display.init();
 }
 
 
 void loop() {
-    drawDisplay();
+    display.draw();
 }

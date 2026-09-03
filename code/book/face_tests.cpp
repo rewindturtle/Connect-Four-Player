@@ -16,9 +16,9 @@ static void testProfilesAreDistinct() {
     Face& face = Face::getFace();
     face.setState(FACE_NEUTRAL);
 
-    uint32_t colours[FACE_PERSONALITY_COUNT] = {};
-    for (uint8_t i = 0; i < FACE_PERSONALITY_COUNT; ++i) {
-        FacePersonality personality = static_cast<FacePersonality>(i);
+    uint32_t colours[PLAY_STYLE_COUNT] = {};
+    for (uint8_t i = 0; i < PLAY_STYLE_COUNT; ++i) {
+        PlayStyle personality = static_cast<PlayStyle>(i);
         face.setPersonality(personality);
         face.update(0);
 
@@ -39,7 +39,7 @@ static void testSignatureDecorations() {
     Face& face = Face::getFace();
     face.setState(FACE_NEUTRAL);
 
-    face.setPersonality(FACE_PERSONALITY_COPYCAT);
+    face.setPersonality(COPYCAT_PLAY_STYLE);
     face.update(0);
     const FaceDecorations& cat = face.getDecorations();
     assert(isVisible(cat.leftEar));
@@ -50,20 +50,20 @@ static void testSignatureDecorations() {
     assert(cat.leftEar.y3 < face.getLeftBrowParams().y1 || face.getLeftBrowParams().strokeWidth < 1.f);
     assert(cat.rightEar.y1 < face.getRightBrowParams().y1 || face.getRightBrowParams().strokeWidth < 1.f);
 
-    face.setPersonality(FACE_PERSONALITY_MISTAKES);
+    face.setPersonality(MISTAKES_PLAY_STYLE);
     face.update(0);
     const FaceDecorations& mistakes = face.getDecorations();
     assert(mistakes.accentLine1.strokeWidth >= 1.f);
     assert(mistakes.accentLine2.strokeWidth >= 1.f);
 
-    face.setPersonality(FACE_PERSONALITY_CENTER);
+    face.setPersonality(CENTER_PLAY_STYLE);
     face.update(0);
     const TriangleParams& centerNose = face.getDecorations().accent;
     assert(isVisible(centerNose));
     assert(centerNose.filled);
     assert(centerNose.y1 >= 60.f && centerNose.y2 >= 60.f && centerNose.y3 >= 60.f);
 
-    face.setPersonality(FACE_PERSONALITY_STACKER);
+    face.setPersonality(STACKER_PLAY_STYLE);
     face.update(0);
     const FaceDecorations& stacker = face.getDecorations();
     assert(stacker.accentLine1.strokeWidth >= 1.f);
@@ -71,13 +71,13 @@ static void testSignatureDecorations() {
     assert(stacker.accentLine1.y1 >= 60.f && stacker.accentLine1.y2 >= 60.f);
     assert(stacker.accentLine2.y1 >= 60.f && stacker.accentLine2.y2 >= 60.f);
 
-    face.setPersonality(FACE_PERSONALITY_PACIFIST);
+    face.setPersonality(PACIFIST_PLAY_STYLE);
     face.update(0);
     const TeardropParams& tear = face.getDecorations().teardrop;
     assert(tear.visible);
     assert(tear.width > 0.f && tear.height > tear.width);
 
-    face.setPersonality(FACE_PERSONALITY_TRAP);
+    face.setPersonality(TRAP_PLAY_STYLE);
     face.update(0);
     const MouthParams& smirk = face.getMouthParams();
     assert(smirk.shape == MOUTH_SMIRK);
@@ -88,7 +88,7 @@ static void testSignatureDecorations() {
 
 static void testDecorationsSurviveEmotions() {
     Face& face = Face::getFace();
-    face.setPersonality(FACE_PERSONALITY_COPYCAT);
+    face.setPersonality(COPYCAT_PLAY_STYLE);
 
     face.setState(FACE_CELEBRATING);
     face.update(0);
@@ -105,13 +105,13 @@ static void testDecorationsSurviveEmotions() {
     assert(face.getDecorations().rightEar.y1 < face.getRightBrowParams().y1);
 
     face.setState(FACE_NEUTRAL);
-    face.setPersonality(FACE_PERSONALITY_STANDARD);
+    face.setPersonality(STANDARD_PLAY_STYLE);
 }
 
 
 static void testReactionPoses() {
     Face& face = Face::getFace();
-    face.setPersonality(FACE_PERSONALITY_COPYCAT);
+    face.setPersonality(COPYCAT_PLAY_STYLE);
 
     face.setState(FACE_THINKING);
     face.update(0);
@@ -141,7 +141,7 @@ static void testReactionPoses() {
     assert(isVisible(face.getDecorations().leftEar));
 
     face.clearReaction();
-    face.setPersonality(FACE_PERSONALITY_STANDARD);
+    face.setPersonality(STANDARD_PLAY_STYLE);
 }
 
 

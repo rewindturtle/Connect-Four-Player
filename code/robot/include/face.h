@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "player.h"
+
 
 enum EyeShape : uint8_t {
     EYE_RECT,
@@ -237,23 +239,6 @@ enum FaceState : uint8_t {
 };
 
 
-// Personality is persistent; FaceState is a temporary emotional expression.
-// These remain independent of Player and are mapped at the game/UI boundary.
-enum FacePersonality : uint8_t {
-    FACE_PERSONALITY_STANDARD,
-    FACE_PERSONALITY_MISTAKES,
-    FACE_PERSONALITY_PROLONG,
-    FACE_PERSONALITY_CENTER,
-    FACE_PERSONALITY_EDGE,
-    FACE_PERSONALITY_STACKER,
-    FACE_PERSONALITY_SPREADER,
-    FACE_PERSONALITY_PACIFIST,
-    FACE_PERSONALITY_COPYCAT,
-    FACE_PERSONALITY_TRAP,
-    FACE_PERSONALITY_COUNT
-};
-
-
 struct NeutralFaceParams {
     BlinkParams blink;
     GlanceParams glance;
@@ -294,10 +279,7 @@ union FaceInfo {
     PleasedFaceParams pleased;
     WorriedFaceParams worried;
 
-    FaceInfo() {
-        memset(static_cast<void*>(this), 0, sizeof(FaceInfo));
-    }
-
+    FaceInfo() {memset(static_cast<void*>(this), 0, sizeof(FaceInfo));}
     ~FaceInfo() {}
 };
 
@@ -314,7 +296,7 @@ class Face {
         FaceDecorations _decorations;
         FaceInfo _info;
         FaceState _state;
-        FacePersonality _personality;
+        PlayStyle _personality;
         uint32_t _stateExpiresAt = 0;
         bool _stateTimed = false;
         FaceSnapshot _previous = {};
@@ -342,8 +324,8 @@ class Face {
         void triggerReaction(FaceState state, uint32_t now, uint32_t durationMs);
         void clearReaction();
         inline FaceState getState() const {return _state;}
-        void setPersonality(FacePersonality personality);
-        inline FacePersonality getPersonality() const {return _personality;}
+        void setPersonality(PlayStyle personality);
+        inline PlayStyle getPersonality() const {return _personality;}
         inline bool requiresDraw() const {return _requiresDraw;}
 
         inline const EyeParams& getLeftEyeParams() const {return _leftEye;}

@@ -23,8 +23,8 @@ static void addColourings(const std::vector<uint8_t>& cells, uint8_t index,
 
     if (index == cells.size()) {
         assert(remainingFirst == 0);
-        uint64_t key = getBoardKey(board);
-        assert(key < (1ULL << 47));
+        uint64_t key = board.getKey();
+        assert(key <= BOARD_KEY_MASK);
         assert(keys.insert(key).second);
         return;
     }
@@ -32,8 +32,8 @@ static void addColourings(const std::vector<uint8_t>& cells, uint8_t index,
     addColourings(cells, index + 1, remainingFirst, board, keys);
 
     if (remainingFirst != 0) {
-        board.firstPieces |= 1ULL << cells[index];
-        addColourings(cells, index + 1, remainingFirst - 1, board, keys);
+        Board next(board.getFirstPieces() | (1ULL << cells[index]), board.getAllPieces());
+        addColourings(cells, index + 1, remainingFirst - 1, next, keys);
     }
 }
 
@@ -45,7 +45,7 @@ static void addHeightProfiles(uint8_t col, uint8_t remainingPieces, Board board,
 
         std::vector<uint8_t> cells;
         for (uint8_t c = 0; c < 7; ++c) {
-            uint8_t height = getColumnHeight(board, c);
+            uint8_t height = board.getColumnHeight(c);
             for (uint8_t row = 0; row < height; ++row) {
                 cells.push_back(7 * c + row);
             }
@@ -57,9 +57,8 @@ static void addHeightProfiles(uint8_t col, uint8_t remainingPieces, Board board,
 
     uint8_t maxHeight = remainingPieces < 6 ? remainingPieces : 6;
     for (uint8_t height = 0; height <= maxHeight; ++height) {
-        Board next = board;
         uint64_t column = height == 0 ? 0 : (1ULL << height) - 1;
-        next.allPieces |= column << (7 * col);
+        Board next(board.getFirstPieces(), board.getAllPieces() | (column << (7 * col)));
         addHeightProfiles(col + 1, remainingPieces - height, next, keys);
     }
 }
@@ -94,17 +93,17 @@ static void testBoardKeys() {
 
 static void testScoreEncoding() {
     for (uint8_t occupied = 0; occupied <= 42; ++occupied) {
-        assert(encodeMemoScore(0, occupied) == 0);
-        assert(decodeMemoScore(0, occupied) == 0);
+        assert(Memo::encodeScore(0, occupied) == 0);
+        assert(Memo::decodeScore(0, occupied) == 0);
 
         for (uint8_t distance = 0; occupied + distance <= 42; ++distance) {
             int8_t magnitude = MAX_SCORE - (occupied + distance);
             int8_t score = (distance & 1) != 0 ? magnitude : -magnitude;
-            uint8_t code = encodeMemoScore(score, occupied);
+            uint8_t code = Memo::encodeScore(score, occupied);
 
             assert(code == distance + 1);
             assert(code < 64);
-            assert(decodeMemoScore(code, occupied) == score);
+            assert(Memo::decodeScore(code, occupied) == score);
         }
     }
 }
@@ -112,35 +111,46 @@ static void testScoreEncoding() {
 
 static void testColourMapping() {
     Board board = {0, 0};
-    placeFirstPiece(board, 0);
-    placeSecondPiece(board, 1);
+    board.placeFirstPiece(0);
+    board.placeSecondPiece(1);
 
-    assert(getRedPieces(board, true) == board.firstPieces);
-    assert(getYellowPieces(board, true) == getSecondPieces(board));
-    assert(getRedPieces(board, false) == getSecondPieces(board));
-    assert(getYellowPieces(board, false) == board.firstPieces);
+    assert(board.getRedPieces(true) == board.getFirstPieces());
+    assert(board.getYellowPieces(true) == board.getSecondPieces());
+    assert(board.getRedPieces(false) == board.getSecondPieces());
+    assert(board.getYellowPieces(false) == board.getFirstPieces());
 }
 
 
 static void testMemoStorage() {
-    Memo* memo = initMemo();
-    assert(memo != nullptr);
+    static_assert(sizeof(MemoEntry) == 6);
+    static_assert(MEMO_SIZE * sizeof(MemoEntry) == 12 * 1024 * 1024);
+
+    Memo memo;
+    assert(memo.isValid());
+    assert(reinterpret_cast<uintptr_t>(memo.data()) % alignof(MemoEntry) == 0);
 
     constexpr uint32_t slot = 17;
-    constexpr uint32_t tag = 0x02ABCDEF;
+    // Exercises the two tag bits that did not exist in the old 47-bit layout.
+    constexpr uint32_t tag = 0x0EABCDEF;
     constexpr uint8_t occupied = 6;
     constexpr int8_t score = 120; // Win on the next move, at terminal ply 7.
 
-    assert(insertMemoEntry(*memo, slot, tag, score, occupied, 8, MIN_SCORE, MAX_SCORE));
-    assert(isSlotInitialized(memo, slot));
-    assert(getMemoTag(*memo, slot) == tag);
-    assert(getMemoScore(*memo, slot, occupied) == score);
-    assert(getMemoDepth(*memo, slot) == 8);
-    assert(getMemoFlag(*memo, slot) == MEMO_FLAG_EXACT);
+    assert(memo.insertEntry(slot, tag, score, occupied, 8, MIN_SCORE, MAX_SCORE));
+    assert(memo.isSlotInitialized(slot));
+    assert(memo.getTag(slot) == tag);
+    assert(memo.getScore(slot, occupied) == score);
+    assert(memo.getDepth(slot) == 8);
+    assert(memo.getFlag(slot) == MEMO_FLAG_EXACT);
+    assert((memo.entry(slot).tagHigh & 0xF000) == 0);
+    assert((memo.entry(slot).metadata & 0xC000) == 0);
 
-    resetMemo(memo);
-    assert(!isSlotInitialized(memo, slot));
-    freeMemo(memo);
+    int8_t cachedScore = 0;
+    assert(memo.probe(slot, tag, occupied, 8, MIN_SCORE, MAX_SCORE, cachedScore));
+    assert(cachedScore == score);
+    assert(!memo.probe(slot, tag ^ 1, occupied, 8, MIN_SCORE, MAX_SCORE, cachedScore));
+
+    memo.reset();
+    assert(!memo.isSlotInitialized(slot));
 }
 
 

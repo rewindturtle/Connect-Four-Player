@@ -6,23 +6,8 @@
 #include <math.h>
 #include <string.h>
 
-#define LGFX_AUTODETECT
-#include <LovyanGFX.hpp>
-
 #define SCREEN_WIDTH 480
 #define SCREEN_HEIGHT 320
-
-#ifdef C4_DESKTOP
-    static LGFX display(SCREEN_WIDTH, SCREEN_HEIGHT, 2, 2);
-#else
-    static LGFX display;
-#endif
-
-static LGFX_Sprite canvas(&display);
-static LGFX_Sprite faceSprite(&display);
-static LGFX_Sprite faceFrame(&display);
-
-static constexpr float DEGREES_TO_RADIANS = 0.01745329251f;
 
 #define COLOUR_BG 0x0862
 #define COLOUR_GRID 0x1988
@@ -49,49 +34,13 @@ static constexpr float DEGREES_TO_RADIANS = 0.01745329251f;
 #define MAIN_MENU_BUTTON_Y 210
 
 
-struct FaceTransform {
-    float x = 0.f;
-    float y = 0.f;
-    float rotation = 0.f;
-    float scaleX = 1.f;
-    float scaleY = 1.f;
-    bool visible = false;
-};
-
-
-static ScreenState screenState = SCREEN_MAIN_MENU;
-static ScreenState previousScreenState = SCREEN_NULL;
-
-static FaceTransform faceTransform;
-static uint32_t faceRefreshTimer = 0;
-static bool faceNeedsRedraw = false;
-
-
 static uint16_t colourToRgb565(const Colour& c) {
     return ((c.r >> 3) << 11) | ((c.g >> 2) << 5) | (c.b >> 3);
 }
 
 
-static void drawText(const char* text, int centerX, int y, int spacing) {
-    int len = strlen(text);
-    if (len == 0) return;
-
-    int charWidth = canvas.textWidth("A");
-    int w = charWidth + spacing;
-    int totalWidth = len * w - spacing;
-    int x = centerX - (totalWidth / 2);
-
-    char c[2] = {0, 0};
-    for (int i = 0; i < len; ++i) {
-        c[0] = text[i];
-        canvas.drawString(c, x, y);
-        x += w;
-    }
-}
-
-
 static void drawRotatedRect(LovyanGFX& gfx, float cx, float cy, float w, float h, float angleDeg, uint16_t colour) {
-    float rad = angleDeg * DEGREES_TO_RADIANS;
+    float rad = angleDeg * 0.01745329251f;
     float cosA = cosf(rad);
     float sinA = sinf(rad);
     float hw = 0.5f * w;
@@ -164,7 +113,7 @@ static void drawEyebrow(LovyanGFX& gfx, const EyebrowParams& eyebrow, const Face
     if (length < 1.f) return;
 
     drawRotatedRect(gfx, 0.5f * (x1 + x2), 0.5f * (y1 + y2), length, eyebrow.strokeWidth,
-                    atan2f(dy, dx) / DEGREES_TO_RADIANS, colour);
+                    atan2f(dy, dx) / 0.01745329251f, colour);
 }
 
 
@@ -197,7 +146,7 @@ static void drawTriangle(LovyanGFX& gfx, const TriangleParams& triangle, const F
                         0.5f * (points[i][0] + points[next][0]),
                         0.5f * (points[i][1] + points[next][1]),
                         length, triangle.strokeWidth,
-                        atan2f(dy, dx) / DEGREES_TO_RADIANS, colour);
+                        atan2f(dy, dx) / 0.01745329251f, colour);
     }
 }
 
@@ -216,7 +165,7 @@ static void drawDecorationLine(LovyanGFX& gfx, const DecorationLineParams& line,
     if (length < 1.f) return;
 
     drawRotatedRect(gfx, 0.5f * (x1 + x2), 0.5f * (y1 + y2), length,
-                    line.strokeWidth, atan2f(dy, dx) / DEGREES_TO_RADIANS, colour);
+                    line.strokeWidth, atan2f(dy, dx) / 0.01745329251f, colour);
 }
 
 
@@ -276,76 +225,76 @@ static void drawMouth(LovyanGFX& gfx, const MouthParams& mouth, const FaceOffset
 }
 
 
-static void drawFace(uint32_t now) {
+void Display::_drawFace(uint32_t now) {
     Face& face = Face::getFace();
     face.update(now);
 
-    if (!face.requiresDraw() && !faceNeedsRedraw) return;
-    faceNeedsRedraw = false;
+    if (!face.requiresDraw() && !_faceNeedsRedraw) return;
+    _faceNeedsRedraw = false;
 
     const FaceOffset offset = face.getOffset();
     const uint16_t colour = colourToRgb565(face.getColour());
     const FaceDecorations& decorations = face.getDecorations();
 
-    faceSprite.fillSprite(COLOUR_BG);
-    drawTriangle(faceSprite, decorations.leftEar, offset, colour);
-    drawTriangle(faceSprite, decorations.rightEar, offset, colour);
-    drawEyebrow(faceSprite, face.getLeftBrowParams(), offset, colour);
-    drawEyebrow(faceSprite, face.getRightBrowParams(), offset, colour);
-    drawEye(faceSprite, face.getLeftEyeParams(), offset, colour);
-    drawEye(faceSprite, face.getRightEyeParams(), offset, colour);
-    drawTriangle(faceSprite, decorations.nose, offset, colour);
-    drawMouth(faceSprite, face.getMouthParams(), offset, colour);
-    drawTriangle(faceSprite, decorations.accent, offset, colour);
-    drawDecorationLine(faceSprite, decorations.accentLine1, offset, colour);
-    drawDecorationLine(faceSprite, decorations.accentLine2, offset, colour);
-    drawTeardrop(faceSprite, decorations.teardrop, offset, colour);
+    _faceSprite.fillSprite(COLOUR_BG);
+    drawTriangle(_faceSprite, decorations.leftEar, offset, colour);
+    drawTriangle(_faceSprite, decorations.rightEar, offset, colour);
+    drawEyebrow(_faceSprite, face.getLeftBrowParams(), offset, colour);
+    drawEyebrow(_faceSprite, face.getRightBrowParams(), offset, colour);
+    drawEye(_faceSprite, face.getLeftEyeParams(), offset, colour);
+    drawEye(_faceSprite, face.getRightEyeParams(), offset, colour);
+    drawTriangle(_faceSprite, decorations.nose, offset, colour);
+    drawMouth(_faceSprite, face.getMouthParams(), offset, colour);
+    drawTriangle(_faceSprite, decorations.accent, offset, colour);
+    drawDecorationLine(_faceSprite, decorations.accentLine1, offset, colour);
+    drawDecorationLine(_faceSprite, decorations.accentLine2, offset, colour);
+    drawTeardrop(_faceSprite, decorations.teardrop, offset, colour);
 
     // The SDL backend presents every panel write on its own, so the transform is
     // composed off-screen and the finished frame blitted in a single call.
     const float centre = 0.5f * FACE_FRAME_SIZE;
-    faceFrame.fillSprite(COLOUR_BG);
-    faceSprite.pushRotateZoom(&faceFrame, centre, centre, faceTransform.rotation, faceTransform.scaleX, faceTransform.scaleY);
-    faceFrame.pushSprite(&display, static_cast<int>(faceTransform.x - centre), static_cast<int>(faceTransform.y - centre));
+    _faceFrame.fillSprite(COLOUR_BG);
+    _faceSprite.pushRotateZoom(&_faceFrame, centre, centre, _faceTransform.rotation, _faceTransform.scaleX, _faceTransform.scaleY);
+    _faceFrame.pushSprite(&_display, static_cast<int>(_faceTransform.x - centre), static_cast<int>(_faceTransform.y - centre));
 }
 
 
-static void showFace(FaceState state, float x, float y) {
+void Display::_showFace(FaceState state, float x, float y) {
     Face& face = Face::getFace();
     face.setState(state);
 
-    FacePersonality personality = static_cast<FacePersonality>(randomU32() % static_cast<uint32_t>(FACE_PERSONALITY_COUNT));
-    face.setPersonality(personality);
+    PlayStyle playStyle = static_cast<PlayStyle>(randomU32() % static_cast<uint32_t>(PLAY_STYLE_COUNT));
+    face.setPersonality(playStyle);
 
-    faceTransform = {x, y, 0.f, 1.f, 1.f, true};
+    _faceTransform = {x, y, 0.f, 1.f, 1.f, true};
     // The screen repaint underneath wipes the face, and the face may be idle.
-    faceNeedsRedraw = true;
+    _faceNeedsRedraw = true;
 }
 
 
-static void drawBackground() {
-    canvas.fillScreen(COLOUR_BG);
+void Display::_drawBackground() {
+    _canvas.fillScreen(COLOUR_BG);
 }
 
 
-static void drawUIButton(const char* text, int x, int y) {
-    canvas.fillRoundRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, BUTTON_CORNER_RADIUS, COLOUR_BTN_FILL_HI);
-    canvas.drawRoundRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, BUTTON_CORNER_RADIUS, COLOUR_CYAN);
+void Display::_drawUIButton(const char* text, int x, int y) {
+    _canvas.fillRoundRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, BUTTON_CORNER_RADIUS, COLOUR_BTN_FILL_HI);
+    _canvas.drawRoundRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, BUTTON_CORNER_RADIUS, COLOUR_CYAN);
 
-    canvas.setFont(&fonts::FreeSans9pt7b);
-    canvas.setTextColor(COLOUR_CYAN_LIGHT);
-    canvas.setTextDatum(textdatum_t::middle_centre);
-    canvas.drawString(text, x + (BUTTON_WIDTH / 2), y + (BUTTON_HEIGHT / 2));
+    _canvas.setFont(&fonts::FreeSans9pt7b);
+    _canvas.setTextColor(COLOUR_CYAN_LIGHT);
+    _canvas.setTextDatum(textdatum_t::middle_centre);
+    _canvas.drawString(text, x + (BUTTON_WIDTH / 2), y + (BUTTON_HEIGHT / 2));
 }
 
 
-static void drawMainMenuScreen() {
-    showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, 100.f);
+void Display::_drawMainMenuScreen() {
+    _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, 100.f);
 
-    drawBackground();
-    drawUIButton("PLAY", BUTTON_PLAY_X, MAIN_MENU_BUTTON_Y);
-    drawUIButton("SETTINGS", BUTTON_SETTINGS_X, MAIN_MENU_BUTTON_Y);
-    canvas.pushSprite(0, 0);
+    _drawBackground();
+    _drawUIButton("PLAY", BUTTON_PLAY_X, MAIN_MENU_BUTTON_Y);
+    _drawUIButton("SETTINGS", BUTTON_SETTINGS_X, MAIN_MENU_BUTTON_Y);
+    _canvas.pushSprite(0, 0);
 }
 
 
@@ -358,80 +307,63 @@ static void initSprite(LGFX_Sprite& sprite, int width, int height) {
 }
 
 
-void initDisplay() {
-    display.init();
-    display.setRotation(0);
-    display.setBrightness(128);
-    display.setColorDepth(16);
+Display::Display()
+    #ifdef C4_DESKTOP
+    : _display(SCREEN_WIDTH, SCREEN_HEIGHT, 2, 2),
+    #else
+    : _display(),
+    #endif
+      _canvas(&_display),
+      _faceSprite(&_display),
+      _faceFrame(&_display),
+      _screenState(SCREEN_MAIN_MENU),
+      _previousScreenState(SCREEN_NULL),
+      _faceTransform(),
+      _faceRefreshTimer(0),
+      _faceNeedsRedraw(false) {}
 
-    initSprite(canvas, SCREEN_WIDTH, SCREEN_HEIGHT);
-    initSprite(faceSprite, FACE_SPRITE_W, FACE_SPRITE_H);
-    initSprite(faceFrame, FACE_FRAME_SIZE, FACE_FRAME_SIZE);
+
+void Display::init() {
+    _display.init();
+    _display.setRotation(0);
+    _display.setBrightness(128);
+    _display.setColorDepth(16);
+
+    initSprite(_canvas, SCREEN_WIDTH, SCREEN_HEIGHT);
+    initSprite(_faceSprite, FACE_SPRITE_W, FACE_SPRITE_H);
+    initSprite(_faceFrame, FACE_FRAME_SIZE, FACE_FRAME_SIZE);
 }
 
 
-void drawDisplay() {
+void Display::draw() {
     const uint32_t now = getNow();
 
-    if (screenState != previousScreenState) {
-        switch (screenState) {
+    if (_screenState != _previousScreenState) {
+        switch (_screenState) {
             case SCREEN_MAIN_MENU:
-                drawMainMenuScreen();
+                _drawMainMenuScreen();
                 break;
             case SCREEN_SETTINGS_MENU:
             case SCREEN_NULL:
                 break;
         }
-        previousScreenState = screenState;
+        _previousScreenState = _screenState;
     }
 
-    if (faceTransform.visible && now >= faceRefreshTimer) {
-        faceRefreshTimer = now + FACE_REFRESH_RATE_MS;
-        drawFace(now);
+    if (_faceTransform.visible && now >= _faceRefreshTimer) {
+        _faceRefreshTimer = now + FACE_REFRESH_RATE_MS;
+        _drawFace(now);
     }
 }
 
 
-void setScreen(ScreenState state) {
-    screenState = state;
+void Display::setScreen(ScreenState state) {
+    _screenState = state;
 }
 
 
-void setFacePlayStyle(uint8_t playStyle) {
-    FacePersonality personality;
-    switch (playStyle) {
-        case MISTAKES_PLAY_STYLE:
-            personality = FACE_PERSONALITY_MISTAKES;
-            break;
-        case PROLONG_PLAY_STYLE:
-            personality = FACE_PERSONALITY_PROLONG;
-            break;
-        case CENTER_PLAY_STYLE:
-            personality = FACE_PERSONALITY_CENTER;
-            break;
-        case EDGE_PLAY_STYLE:
-            personality = FACE_PERSONALITY_EDGE;
-            break;
-        case STACKER_PLAY_STYLE:
-            personality = FACE_PERSONALITY_STACKER;
-            break;
-        case SPREADER_PLAY_STYLE:
-            personality = FACE_PERSONALITY_SPREADER;
-            break;
-        case PACIFIST_PLAY_STYLE:
-            personality = FACE_PERSONALITY_PACIFIST;
-            break;
-        case COPYCAT_PLAY_STYLE:
-            personality = FACE_PERSONALITY_COPYCAT;
-            break;
-        case TRAP_PLAY_STYLE:
-            personality = FACE_PERSONALITY_TRAP;
-            break;
-        default:
-            personality = FACE_PERSONALITY_STANDARD;
-            break;
-    }
-
-    Face::getFace().setPersonality(personality);
-    faceNeedsRedraw = true;
+void Display::setFacePlayStyle(PlayStyle playStyle) {
+    if (playStyle >= PLAY_STYLE_COUNT) playStyle = STANDARD_PLAY_STYLE;
+    Face::getFace().setPersonality(playStyle);
+    _faceNeedsRedraw = true;
 }
