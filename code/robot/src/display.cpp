@@ -29,6 +29,32 @@
 #define BUTTON_SETTINGS_X (240 + (BUTTON_GAP / 2))
 #define MAIN_MENU_BUTTON_Y 210
 
+#define SETTINGS_ROW_Y 215
+#define SETTINGS_ROW_HEIGHT 44
+#define SETTINGS_TITLE_X 68
+#define SETTINGS_LEFT_ARROW_X 132
+#define SETTINGS_ARROW_WIDTH 44
+#define SETTINGS_STYLE_NAME_X 276
+#define SETTINGS_RIGHT_ARROW_X 378
+#define SETTINGS_BACK_X 372
+#define SETTINGS_BACK_Y 270
+#define SETTINGS_BACK_WIDTH 88
+#define SETTINGS_BACK_HEIGHT 38
+
+
+static const char* const PLAY_STYLE_NAMES[PLAY_STYLE_COUNT] = {
+    "STANDARD",
+    "MISTAKES",
+    "PROLONG",
+    "CENTER",
+    "EDGE",
+    "STACKER",
+    "SPREADER",
+    "PACIFIST",
+    "COPYCAT",
+    "TRAP"
+};
+
 
 static uint16_t colourToRgb565(const Colour& c) {
     return ((c.r >> 3) << 11) | ((c.g >> 2) << 5) | (c.b >> 3);
@@ -50,6 +76,11 @@ static Colour lightenColour(const Colour& colour, uint8_t amount) {
         static_cast<uint8_t>(colour.g + ((255 - colour.g) * amount) / 255),
         static_cast<uint8_t>(colour.b + ((255 - colour.b) * amount) / 255)
     };
+}
+
+
+static bool pointInRect(uint16_t px, uint16_t py, int x, int y, int width, int height) {
+    return px >= x && px < x + width && py >= y && py < y + height;
 }
 
 
@@ -277,9 +308,6 @@ void Display::_showFace(FaceState state, float x, float y) {
     Face& face = Face::getFace();
     face.setState(state);
 
-    PlayStyle playStyle = static_cast<PlayStyle>(randomU32() % static_cast<uint32_t>(PLAY_STYLE_COUNT));
-    face.setPersonality(playStyle);
-
     _faceTransform = {x, y, 0.f, 1.f, 1.f, true};
     // The screen repaint underneath wipes the face, and the face may be idle.
     _faceNeedsRedraw = true;
@@ -291,19 +319,28 @@ void Display::_drawBackground() {
 }
 
 
-void Display::_drawUIButton(const char* text, int x, int y) {
+void Display::_drawUIButton(const char* text, int x, int y, int width, int height) {
     Colour faceColour = Face::getFace().getPersonalityColour();
     uint16_t fillColour = colourToRgb565(dimColour(faceColour, 48));
     uint16_t outlineColour = colourToRgb565(faceColour);
     uint16_t textColour = colourToRgb565(lightenColour(faceColour, 76));
 
-    _canvas.fillRoundRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, BUTTON_CORNER_RADIUS, fillColour);
-    _canvas.drawRoundRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, BUTTON_CORNER_RADIUS, outlineColour);
+    _canvas.fillRoundRect(x, y, width, height, BUTTON_CORNER_RADIUS, fillColour);
+    _canvas.drawRoundRect(x, y, width, height, BUTTON_CORNER_RADIUS, outlineColour);
 
     _canvas.setFont(&fonts::FreeSans9pt7b);
     _canvas.setTextColor(textColour);
     _canvas.setTextDatum(textdatum_t::middle_centre);
-    _canvas.drawString(text, x + (BUTTON_WIDTH / 2), y + (BUTTON_HEIGHT / 2));
+    _canvas.drawString(text, x + (width / 2), y + (height / 2));
+}
+
+
+void Display::_drawUILabel(const char* text, int x, int y) {
+    Colour faceColour = Face::getFace().getPersonalityColour();
+    _canvas.setFont(&fonts::FreeSans9pt7b);
+    _canvas.setTextColor(colourToRgb565(lightenColour(faceColour, 76)));
+    _canvas.setTextDatum(textdatum_t::middle_centre);
+    _canvas.drawString(text, x, y);
 }
 
 
@@ -311,9 +348,61 @@ void Display::_drawMainMenuScreen() {
     _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, 100.f);
 
     _drawBackground();
-    _drawUIButton("PLAY", BUTTON_PLAY_X, MAIN_MENU_BUTTON_Y);
-    _drawUIButton("SETTINGS", BUTTON_SETTINGS_X, MAIN_MENU_BUTTON_Y);
+    _drawUIButton("PLAY", BUTTON_PLAY_X, MAIN_MENU_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT);
+    _drawUIButton("SETTINGS", BUTTON_SETTINGS_X, MAIN_MENU_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT);
     _canvas.pushSprite(0, 0);
+}
+
+
+void Display::_drawSettingsMenuScreen() {
+    if (!_faceTransform.visible) {
+        _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, 100.f);
+    }
+
+    _drawBackground();
+    _drawUILabel("PLAY STYLE", SETTINGS_TITLE_X, SETTINGS_ROW_Y + (SETTINGS_ROW_HEIGHT / 2));
+    _drawUIButton("<", SETTINGS_LEFT_ARROW_X, SETTINGS_ROW_Y, SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT);
+    _drawUILabel(PLAY_STYLE_NAMES[Face::getFace().getPersonality()],
+                 SETTINGS_STYLE_NAME_X, SETTINGS_ROW_Y + (SETTINGS_ROW_HEIGHT / 2));
+    _drawUIButton(">", SETTINGS_RIGHT_ARROW_X, SETTINGS_ROW_Y, SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT);
+    _drawUIButton("BACK", SETTINGS_BACK_X, SETTINGS_BACK_Y, SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT);
+    _canvas.pushSprite(0, 0);
+
+    // The full-screen canvas repaint erased the independently rendered face.
+    _faceNeedsRedraw = true;
+}
+
+
+void Display::_selectPlayStyle(int8_t direction) {
+    int next = static_cast<int>(Face::getFace().getPersonality()) + direction;
+    if (next < 0) next = PLAY_STYLE_COUNT - 1;
+    if (next >= PLAY_STYLE_COUNT) next = 0;
+    setFacePlayStyle(static_cast<PlayStyle>(next));
+}
+
+
+void Display::_handleTouch(uint16_t x, uint16_t y) {
+    switch (_screenState) {
+        case SCREEN_MAIN_MENU:
+            if (pointInRect(x, y, BUTTON_SETTINGS_X, MAIN_MENU_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+                setScreen(SCREEN_SETTINGS_MENU);
+            }
+            break;
+        case SCREEN_SETTINGS_MENU:
+            if (pointInRect(x, y, SETTINGS_LEFT_ARROW_X, SETTINGS_ROW_Y,
+                            SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                _selectPlayStyle(-1);
+            } else if (pointInRect(x, y, SETTINGS_RIGHT_ARROW_X, SETTINGS_ROW_Y,
+                                   SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                _selectPlayStyle(1);
+            } else if (pointInRect(x, y, SETTINGS_BACK_X, SETTINGS_BACK_Y,
+                                   SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT)) {
+                setScreen(SCREEN_MAIN_MENU);
+            }
+            break;
+        case SCREEN_NULL:
+            break;
+    }
 }
 
 
@@ -339,7 +428,8 @@ Display::Display()
       _previousScreenState(SCREEN_NULL),
       _faceTransform(),
       _faceRefreshTimer(0),
-      _faceNeedsRedraw(false) {}
+      _faceNeedsRedraw(false),
+      _touchWasPressed(false) {}
 
 
 void Display::init() {
@@ -351,11 +441,22 @@ void Display::init() {
     initSprite(_canvas, SCREEN_WIDTH, SCREEN_HEIGHT);
     initSprite(_faceSprite, FACE_SPRITE_W, FACE_SPRITE_H);
     initSprite(_faceFrame, FACE_FRAME_SIZE, FACE_FRAME_SIZE);
+
+    PlayStyle playStyle = static_cast<PlayStyle>(randomU32() % static_cast<uint32_t>(PLAY_STYLE_COUNT));
+    Face::getFace().setPersonality(playStyle);
 }
 
 
 void Display::draw() {
     const uint32_t now = getNow();
+
+    uint16_t touchX;
+    uint16_t touchY;
+    bool touchIsPressed = _display.getTouch(&touchX, &touchY) != 0;
+    if (touchIsPressed && !_touchWasPressed) {
+        _handleTouch(touchX, touchY);
+    }
+    _touchWasPressed = touchIsPressed;
 
     if (_screenState != _previousScreenState) {
         switch (_screenState) {
@@ -363,13 +464,15 @@ void Display::draw() {
                 _drawMainMenuScreen();
                 break;
             case SCREEN_SETTINGS_MENU:
+                _drawSettingsMenuScreen();
+                break;
             case SCREEN_NULL:
                 break;
         }
         _previousScreenState = _screenState;
     }
 
-    if (_faceTransform.visible && now >= _faceRefreshTimer) {
+    if (_faceTransform.visible && (_faceNeedsRedraw || now >= _faceRefreshTimer)) {
         _faceRefreshTimer = now + FACE_REFRESH_RATE_MS;
         _drawFace(now);
     }
@@ -385,4 +488,5 @@ void Display::setFacePlayStyle(PlayStyle playStyle) {
     if (playStyle >= PLAY_STYLE_COUNT) playStyle = STANDARD_PLAY_STYLE;
     Face::getFace().setPersonality(playStyle);
     _faceNeedsRedraw = true;
+    _previousScreenState = SCREEN_NULL;
 }

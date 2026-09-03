@@ -36,12 +36,17 @@ class Display {
         FaceTransform _faceTransform;
         uint32_t _faceRefreshTimer;
         bool _faceNeedsRedraw;
+        bool _touchWasPressed;
 
         void _drawFace(uint32_t now);
         void _showFace(FaceState state, float x, float y);
         void _drawBackground();
-        void _drawUIButton(const char* text, int x, int y);
+        void _drawUIButton(const char* text, int x, int y, int width, int height);
+        void _drawUILabel(const char* text, int x, int y);
         void _drawMainMenuScreen();
+        void _drawSettingsMenuScreen();
+        void _handleTouch(uint16_t x, uint16_t y);
+        void _selectPlayStyle(int8_t direction);
     public:
         Display();
 
