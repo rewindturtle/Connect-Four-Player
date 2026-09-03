@@ -9,11 +9,9 @@
 #include <cstdio>
 
 
-static Player makeShallowPlayer(PlayStyle playStyle) {
-    Player player;
+static void configureShallowPlayer(Player& player, PlayStyle playStyle) {
     player.setMaxDepth(1);
     player.setPlayStyle(playStyle);
-    return player;
 }
 
 
@@ -47,7 +45,8 @@ static Board makeFullBoard() {
 
 
 static void testBestScoreDecision() {
-    Player player = makeShallowPlayer(STANDARD_PLAY_STYLE);
+    Player player;
+    configureShallowPlayer(player, STANDARD_PLAY_STYLE);
     Board board = {0, 0};
 
     MoveDecision decision = player.chooseMove(board);
@@ -62,17 +61,20 @@ static void testBestScoreDecision() {
 static void testStyleReasons() {
     Board empty = {0, 0};
 
-    Player center = makeShallowPlayer(CENTER_PLAY_STYLE);
+    Player center;
+    configureShallowPlayer(center, CENTER_PLAY_STYLE);
     MoveDecision centerDecision = center.chooseMove(empty);
     assert(centerDecision.column == 3);
     assert(centerDecision.reason == MOVE_REASON_PREFER_CENTER);
 
-    Player edge = makeShallowPlayer(EDGE_PLAY_STYLE);
+    Player edge;
+    configureShallowPlayer(edge, EDGE_PLAY_STYLE);
     MoveDecision edgeDecision = edge.chooseMove(empty);
     assert(edgeDecision.column == 6);
     assert(edgeDecision.reason == MOVE_REASON_PREFER_EDGE);
 
-    Player copycat = makeShallowPlayer(COPYCAT_PLAY_STYLE);
+    Player copycat;
+    configureShallowPlayer(copycat, COPYCAT_PLAY_STYLE);
     copycat.setLastOpponentColumn(2);
     MoveDecision copyDecision = copycat.chooseMove(empty);
     assert(copyDecision.column == 2);
@@ -83,7 +85,8 @@ static void testStyleReasons() {
 static void testDeliberatelySuboptimalDecisions() {
     Board board = makeImmediateWinBoard();
 
-    Player mistakes = makeShallowPlayer(MISTAKES_PLAY_STYLE);
+    Player mistakes;
+    configureShallowPlayer(mistakes, MISTAKES_PLAY_STYLE);
     mistakes.setMistakeProb(2.0f);
     MoveDecision mistake = mistakes.chooseMove(board);
     assert(mistake.reason == MOVE_REASON_INTENTIONAL_MISTAKE);
@@ -91,14 +94,16 @@ static void testDeliberatelySuboptimalDecisions() {
     assert(mistake.bestScore > 0);
     assert(mistake.score < mistake.bestScore);
 
-    Player pacifist = makeShallowPlayer(PACIFIST_PLAY_STYLE);
+    Player pacifist;
+    configureShallowPlayer(pacifist, PACIFIST_PLAY_STYLE);
     MoveDecision avoidedWin = pacifist.chooseMove(board);
     assert(avoidedWin.reason == MOVE_REASON_AVOID_WIN);
     assert(avoidedWin.score == 0);
     assert(avoidedWin.bestScore > 0);
     assert(avoidedWin.score < avoidedWin.bestScore);
 
-    Player copycat = makeShallowPlayer(COPYCAT_PLAY_STYLE);
+    Player copycat;
+    configureShallowPlayer(copycat, COPYCAT_PLAY_STYLE);
     copycat.setLastOpponentColumn(4);
     MoveDecision refusedCopy = copycat.chooseMove(board);
     assert(refusedCopy.column == 3);
@@ -108,7 +113,8 @@ static void testDeliberatelySuboptimalDecisions() {
 
 
 static void testNoLegalMove() {
-    Player player = makeShallowPlayer(STANDARD_PLAY_STYLE);
+    Player player;
+    configureShallowPlayer(player, STANDARD_PLAY_STYLE);
     Board board = makeFullBoard();
 
     MoveDecision decision = player.chooseMove(board);
@@ -133,12 +139,62 @@ static void testMemoBackedSearch() {
 }
 
 
+static void testIterativeDeepeningReachesMaxDepth() {
+    Memo memo;
+    assert(memo.isValid());
+
+    Player player(&memo);
+    player.setMaxDepth(4);
+    player.setTimeLimitMs(0);
+
+    Board board;
+    MoveDecision decision = player.chooseMove(board);
+    assert(decision.column < 7);
+
+    // Column 6 is searched last. Its child entry can only reach depth 3 after
+    // every root column has completed at root depth 4.
+    Board lastChild = board;
+    lastChild.placeFirstPiece(6);
+    uint64_t key = lastChild.getKey();
+    uint32_t slot = key & MEMO_SLOT_MASK;
+    uint32_t tag = static_cast<uint32_t>(key >> MEMO_BITS);
+    assert(memo.getTag(slot) == tag);
+    assert(memo.getDepth(slot) == 3);
+}
+
+
+static void testIdleSearchIgnoresTimeLimitAndHonoursForceStop() {
+    Memo memo;
+    assert(memo.isValid());
+
+    Player player(&memo);
+    player.setMaxDepth(4);
+    player.setTimeLimitMs(1);
+
+    Board board;
+    player.idleSearch(board);
+
+    uint64_t key = board.getKey();
+    uint32_t slot = key & MEMO_SLOT_MASK;
+    uint32_t tag = static_cast<uint32_t>(key >> MEMO_BITS);
+    assert(memo.getTag(slot) == tag);
+    assert(memo.getDepth(slot) == 4);
+
+    memo.reset();
+    player.setForceStop(true);
+    player.idleSearch(board);
+    assert(!memo.isSlotInitialized(slot));
+}
+
+
 int main() {
     testBestScoreDecision();
     testStyleReasons();
     testDeliberatelySuboptimalDecisions();
     testNoLegalMove();
     testMemoBackedSearch();
+    testIterativeDeepeningReachesMaxDepth();
+    testIdleSearchIgnoresTimeLimitAndHonoursForceStop();
     std::puts("player tests passed");
     return 0;
 }

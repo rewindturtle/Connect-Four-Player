@@ -18,16 +18,26 @@ namespace {
 }
 
 
-Player::Player(Memo* memo) : _memo(memo), _mistakeProb(0.2f), _maxDepth(4), _panicDepth(8), _turn(0),
+Player::Player(Memo* memo) : _memo(memo), _mistakeProb(0.2f),
+                             _timeLimitMs(DEFAULT_SEARCH_TIME_LIMIT_MS), _maxDepth(4), _turn(0),
                              _playStyle(STANDARD_PLAY_STYLE), _lastOpponentColumn(NO_COLUMN), _isFirst(true),
-                             _isRed(true), _canPanic(false), _forceStop(false) {}
+                             _isRed(true), _forceStop(false) {}
 
 
 // Forward declaration
-static int8_t negaMaxSecond(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta);
+static int8_t negaMaxSecond(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta,
+                            uint32_t startMs, uint32_t timeLimitMs);
 
 
-static int8_t negaMaxFirst(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta) {
+static inline bool shouldStopSearch(const Player& player, uint32_t startMs, uint32_t timeLimitMs) {
+    return player.shouldStop() || (timeLimitMs != 0 && static_cast<uint32_t>(getNow() - startMs) >= timeLimitMs);
+}
+
+
+static int8_t negaMaxFirst(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta,
+                           uint32_t startMs, uint32_t timeLimitMs) {
+    if (shouldStopSearch(player, startMs, timeLimitMs)) return 0;
+
     uint8_t occupied = board.getOccupiedCount();
     if (board.secondHasWin()) {
         return -(MAX_SCORE - occupied);
@@ -52,8 +62,8 @@ static int8_t negaMaxFirst(const Board& board, const Player& player, uint8_t dep
 
         Board newBoard = board;
         newBoard.placeFirstPiece(c);
-        int8_t newScore = -negaMaxSecond(newBoard, player, depth - 1, -beta, -alpha);
-        if (player.shouldStop()) return 0;
+        int8_t newScore = -negaMaxSecond(newBoard, player, depth - 1, -beta, -alpha, startMs, timeLimitMs);
+        if (shouldStopSearch(player, startMs, timeLimitMs)) return 0;
 
         if (newScore > score) {
             score = newScore;
@@ -72,7 +82,10 @@ static int8_t negaMaxFirst(const Board& board, const Player& player, uint8_t dep
 }
 
 
-static int8_t negaMaxSecond(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta) {
+static int8_t negaMaxSecond(const Board& board, const Player& player, uint8_t depth, int8_t alpha, int8_t beta,
+                            uint32_t startMs, uint32_t timeLimitMs) {
+    if (shouldStopSearch(player, startMs, timeLimitMs)) return 0;
+
     uint8_t occupied = board.getOccupiedCount();
     if (board.firstHasWin()) {
         return -(MAX_SCORE - occupied);
@@ -97,8 +110,8 @@ static int8_t negaMaxSecond(const Board& board, const Player& player, uint8_t de
 
         Board newBoard = board;
         newBoard.placeSecondPiece(c);
-        int8_t newScore = -negaMaxFirst(newBoard, player, depth - 1, -beta, -alpha);
-        if (player.shouldStop()) return 0;
+        int8_t newScore = -negaMaxFirst(newBoard, player, depth - 1, -beta, -alpha, startMs, timeLimitMs);
+        if (shouldStopSearch(player, startMs, timeLimitMs)) return 0;
 
         if (newScore > score) {
             score = newScore;
@@ -319,8 +332,10 @@ static MoveSelection chooseColumnCopycatStyle(const Player& player, const Board&
 }
 
 
-// Counts opponent replies to col that are not already losing for the opponent
-static uint8_t countSafeReplies(const Player& player, const Board& board, uint8_t col, uint8_t depth) {
+// Counts opponent replies to col that are not already losing for the opponent.
+// False means the analysis was interrupted and its partial count is unusable.
+static bool countSafeReplies(const Player& player, const Board& board, uint8_t col, uint8_t depth,
+                             uint32_t startMs, uint32_t timeLimitMs, uint8_t& safeReplies) {
     Board afterMove = board;
     if (player.isFirst()) {
         afterMove.placeFirstPiece(col);
@@ -328,30 +343,33 @@ static uint8_t countSafeReplies(const Player& player, const Board& board, uint8_
         afterMove.placeSecondPiece(col);
     }
 
-    uint8_t safeReplies = 0;
+    safeReplies = 0;
     for (uint8_t r = 0; r < 7; ++r) {
         if (afterMove.isColumnFull(r)) continue;
+        if (shouldStopSearch(player, startMs, timeLimitMs)) return false;
 
         Board afterReply = afterMove;
         int8_t score;
         if (player.isFirst()) {
             afterReply.placeSecondPiece(r);
-            score = negaMaxFirst(afterReply, player, depth, MIN_SCORE, MAX_SCORE);
+            score = negaMaxFirst(afterReply, player, depth, MIN_SCORE, MAX_SCORE, startMs, timeLimitMs);
         } else {
             afterReply.placeFirstPiece(r);
-            score = negaMaxSecond(afterReply, player, depth, MIN_SCORE, MAX_SCORE);
+            score = negaMaxSecond(afterReply, player, depth, MIN_SCORE, MAX_SCORE, startMs, timeLimitMs);
         }
+        if (shouldStopSearch(player, startMs, timeLimitMs)) return false;
 
         if (score <= 0) {
             ++safeReplies;
         }
     }
 
-    return safeReplies;
+    return true;
 }
 
 
-static MoveSelection chooseColumnTrapStyle(const Player& player, const Board& board, const int8_t (&scores)[7]) {
+static MoveSelection chooseColumnTrapStyle(const Player& player, const Board& board, const int8_t (&scores)[7],
+                                           uint8_t completedDepth, uint32_t startMs, uint32_t timeLimitMs) {
     uint8_t cols[7];
     uint8_t numCols = collectBestColumns(scores, cols);
 
@@ -360,13 +378,21 @@ static MoveSelection chooseColumnTrapStyle(const Player& player, const Board& bo
     // A forced win or loss is already decided, so only break neutral ties
     if (scores[cols[0]] != 0) return chooseColumnStandardStyle(player, board, scores);
 
-    uint8_t replyDepth = player.getMaxDepth() > 2 ? player.getMaxDepth() - 2 : 1;
+    // Trap analysis includes our move and the opponent's reply, so at least
+    // three completed plies are needed to keep it inside the search horizon.
+    if (completedDepth < 3 || shouldStopSearch(player, startMs, timeLimitMs)) {
+        return chooseColumnStandardStyle(player, board, scores);
+    }
+    uint8_t replyDepth = completedDepth - 2;
 
     uint8_t picked[7];
     uint8_t numPicked = 0;
     uint8_t fewestSafe = 0;
     for (uint8_t i = 0; i < numCols; ++i) {
-        uint8_t safeReplies = countSafeReplies(player, board, cols[i], replyDepth);
+        uint8_t safeReplies;
+        if (!countSafeReplies(player, board, cols[i], replyDepth, startMs, timeLimitMs, safeReplies)) {
+            return chooseColumnStandardStyle(player, board, scores);
+        }
 
         if (numPicked == 0 || safeReplies < fewestSafe) {
             fewestSafe = safeReplies;
@@ -382,7 +408,16 @@ static MoveSelection chooseColumnTrapStyle(const Player& player, const Board& bo
 }
 
 
-static void scoreColumns(const Player& player, const Board& board, uint8_t maxDepth, int8_t (&scores)[7]) {
+static void initializeLegalScores(const Board& board, int8_t (&scores)[7]) {
+    for (uint8_t c = 0; c < 7; ++c) {
+        scores[c] = board.isColumnFull(c) ? MIN_SCORE : 0;
+    }
+}
+
+
+// Returns true only if every legal column completed at this depth.
+static bool scoreColumns(const Player& player, const Board& board, uint8_t maxDepth, int8_t (&scores)[7],
+                         uint32_t startMs, uint32_t timeLimitMs) {
     for (uint8_t i = 0; i < 7; ++i) {
         uint8_t c = COL_SEARCH_ORDER[i];
 
@@ -390,35 +425,46 @@ static void scoreColumns(const Player& player, const Board& board, uint8_t maxDe
             scores[c] = MIN_SCORE;
             continue;
         }
+        if (shouldStopSearch(player, startMs, timeLimitMs)) return false;
 
         Board newBoard = board;
         if (player.isFirst()) {
             newBoard.placeFirstPiece(c);
-            scores[c] = -negaMaxSecond(newBoard, player, maxDepth - 1, MIN_SCORE, MAX_SCORE);
+            scores[c] = -negaMaxSecond(newBoard, player, maxDepth - 1, MIN_SCORE, MAX_SCORE,
+                                       startMs, timeLimitMs);
         } else {
             newBoard.placeSecondPiece(c);
-            scores[c] = -negaMaxFirst(newBoard, player, maxDepth - 1, MIN_SCORE, MAX_SCORE);
+            scores[c] = -negaMaxFirst(newBoard, player, maxDepth - 1, MIN_SCORE, MAX_SCORE,
+                                      startMs, timeLimitMs);
         }
-    }
-}
-
-
-// A visible loss is worth a second, deeper look
-static bool isThreatened(const int8_t (&scores)[7]) {
-    for (uint8_t c = 0; c < 7; ++c) {
-        if (scores[c] < 0 && scores[c] != MIN_SCORE) return true;
+        if (shouldStopSearch(player, startMs, timeLimitMs)) return false;
     }
 
-    return false;
+    return true;
 }
 
 
 MoveDecision Player::chooseMove(const Board& board) const {
     int8_t scores[7];
-    scoreColumns(*this, board, getMaxDepth(), scores);
+    initializeLegalScores(board, scores);
 
-    if (canPanic() && isThreatened(scores)) {
-        scoreColumns(*this, board, getPanicDepth(), scores);
+    uint8_t remainingMoves = 42 - board.getOccupiedCount();
+    uint8_t maxSearchDepth = getMaxDepth() < remainingMoves ? getMaxDepth() : remainingMoves;
+    uint8_t completedDepth = 0;
+    uint32_t startMs = getNow();
+    uint32_t timeLimitMs = getTimeLimitMs();
+
+    if (maxSearchDepth != 0) {
+        uint8_t depth = maxSearchDepth < INITIAL_SEARCH_DEPTH ? maxSearchDepth : INITIAL_SEARCH_DEPTH;
+        while (depth <= maxSearchDepth && !shouldStopSearch(*this, startMs, timeLimitMs)) {
+            int8_t iterationScores[7];
+            if (!scoreColumns(*this, board, depth, iterationScores, startMs, timeLimitMs)) break;
+
+            memcpy(scores, iterationScores, sizeof(scores));
+            completedDepth = depth;
+            if (depth == maxSearchDepth) break;
+            ++depth;
+        }
     }
 
     MoveSelection selection;
@@ -448,7 +494,7 @@ MoveDecision Player::chooseMove(const Board& board) const {
             selection = chooseColumnCopycatStyle(*this, board, scores);
             break;
         case TRAP_PLAY_STYLE:
-            selection = chooseColumnTrapStyle(*this, board, scores);
+            selection = chooseColumnTrapStyle(*this, board, scores, completedDepth, startMs, timeLimitMs);
             break;
         default:
             selection = chooseColumnStandardStyle(*this, board, scores);
@@ -471,12 +517,20 @@ uint8_t Player::chooseColumn(const Board& board) const {
 
 
 void Player::idleSearch(const Board& board) const {
-    uint8_t maxSearchDepth = 42 - getTurn();
-    for (uint8_t i = 1; i <= maxSearchDepth && !shouldStop(); ++i) {
+    uint8_t remainingMoves = 42 - board.getOccupiedCount();
+    uint8_t maxSearchDepth = getMaxDepth() < remainingMoves ? getMaxDepth() : remainingMoves;
+    if (maxSearchDepth == 0) return;
+
+    // No deadline: idle search ends only at max depth or via setForceStop().
+    uint8_t depth = maxSearchDepth < INITIAL_SEARCH_DEPTH ? maxSearchDepth : INITIAL_SEARCH_DEPTH;
+    while (depth <= maxSearchDepth && !shouldStop()) {
         if (isFirst()) {
-            negaMaxSecond(board, *this, i, MIN_SCORE, MAX_SCORE);
+            negaMaxSecond(board, *this, depth, MIN_SCORE, MAX_SCORE, 0, 0);
         } else {
-            negaMaxFirst(board, *this, i, MIN_SCORE, MAX_SCORE);
+            negaMaxFirst(board, *this, depth, MIN_SCORE, MAX_SCORE, 0, 0);
         }
+
+        if (depth == maxSearchDepth) break;
+        ++depth;
     }
 }

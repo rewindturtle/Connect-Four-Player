@@ -7,6 +7,8 @@
 #include <atomic>
 
 #define NO_COLUMN 0xFF
+#define INITIAL_SEARCH_DEPTH 3
+#define DEFAULT_SEARCH_TIME_LIMIT_MS 5000
 
 
 enum PlayStyle : uint8_t {
@@ -55,8 +57,8 @@ class Player {
     private:
         Memo* _memo;
         float _mistakeProb;
+        uint32_t _timeLimitMs;
         uint8_t _maxDepth;
-        uint8_t _panicDepth;
         uint8_t _turn;
         PlayStyle _playStyle;
         uint8_t _lastOpponentColumn;
@@ -64,7 +66,6 @@ class Player {
         // _isFirst; _isRed is presentation/game configuration state.
         bool _isFirst;
         bool _isRed;
-        bool _canPanic;
         std::atomic<bool> _forceStop;
     public:
         explicit Player(Memo* memo = nullptr);
@@ -79,8 +80,9 @@ class Player {
         inline float getMistakeProb() const {return _mistakeProb;}
         inline void setMaxDepth(uint8_t depth) {_maxDepth = depth;}
         inline uint8_t getMaxDepth() const {return _maxDepth;}
-        inline void setPanicDepth(uint8_t depth) {_panicDepth = depth;}
-        inline uint8_t getPanicDepth() const {return _panicDepth;}
+        // A zero time limit disables the deadline for chooseMove().
+        inline void setTimeLimitMs(uint32_t timeLimitMs) {_timeLimitMs = timeLimitMs;}
+        inline uint32_t getTimeLimitMs() const {return _timeLimitMs;}
         inline void setTurn(uint8_t turn) {_turn = turn;}
         inline uint8_t getTurn() const {return _turn;}
         inline void setPlayStyle(PlayStyle playStyle) {_playStyle = playStyle;}
@@ -91,10 +93,8 @@ class Player {
         inline bool isFirst() const {return _isFirst;}
         inline void setRed(bool isRed) {_isRed = isRed;}
         inline bool isRed() const {return _isRed;}
-        inline void setCanPanic(bool canPanic) {_canPanic = canPanic;}
-        inline bool canPanic() const {return _canPanic;}
-        inline void setForceStop(bool forceStop) {_forceStop = forceStop;}
-        inline bool shouldStop() const {return _forceStop;}
+        inline void setForceStop(bool forceStop) {_forceStop.store(forceStop, std::memory_order_relaxed);}
+        inline bool shouldStop() const {return _forceStop.load(std::memory_order_relaxed);}
 };
 
 #endif // PLAYER_H
