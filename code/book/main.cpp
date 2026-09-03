@@ -442,7 +442,7 @@ static std::vector<Board> expandFrontier(const std::vector<Board>& frontier, uin
 
 int main(int argc, char** argv) {
     std::string outPath = "book.bin";
-    uint32_t depth = 16;
+    uint32_t depth = 20;
     uint32_t maxTurn = 10;
     uint32_t saveSeconds = 300;
     uint32_t mapMinDepth = 6;

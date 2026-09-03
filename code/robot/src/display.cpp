@@ -11,13 +11,9 @@
 
 #define COLOUR_BG 0x0862
 #define COLOUR_GRID 0x1988
-#define COLOUR_CYAN 0x5E3B
-#define COLOUR_CYAN_LIGHT 0x8EDD
 #define COLOUR_CYAN_DIM 0x1A30
 #define COLOUR_CYAN_FAINT 0x0929
 #define COLOUR_TITLE 0xEF3A
-#define COLOUR_BTN_FILL 0x08C4
-#define COLOUR_BTN_FILL_HI 0x1125
 
 #define FACE_SPRITE_W 160
 #define FACE_SPRITE_H 150
@@ -36,6 +32,24 @@
 
 static uint16_t colourToRgb565(const Colour& c) {
     return ((c.r >> 3) << 11) | ((c.g >> 2) << 5) | (c.b >> 3);
+}
+
+
+static Colour dimColour(const Colour& colour, uint8_t brightness) {
+    return {
+        static_cast<uint8_t>((static_cast<uint16_t>(colour.r) * brightness) / 255),
+        static_cast<uint8_t>((static_cast<uint16_t>(colour.g) * brightness) / 255),
+        static_cast<uint8_t>((static_cast<uint16_t>(colour.b) * brightness) / 255)
+    };
+}
+
+
+static Colour lightenColour(const Colour& colour, uint8_t amount) {
+    return {
+        static_cast<uint8_t>(colour.r + ((255 - colour.r) * amount) / 255),
+        static_cast<uint8_t>(colour.g + ((255 - colour.g) * amount) / 255),
+        static_cast<uint8_t>(colour.b + ((255 - colour.b) * amount) / 255)
+    };
 }
 
 
@@ -278,11 +292,16 @@ void Display::_drawBackground() {
 
 
 void Display::_drawUIButton(const char* text, int x, int y) {
-    _canvas.fillRoundRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, BUTTON_CORNER_RADIUS, COLOUR_BTN_FILL_HI);
-    _canvas.drawRoundRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, BUTTON_CORNER_RADIUS, COLOUR_CYAN);
+    Colour faceColour = Face::getFace().getPersonalityColour();
+    uint16_t fillColour = colourToRgb565(dimColour(faceColour, 48));
+    uint16_t outlineColour = colourToRgb565(faceColour);
+    uint16_t textColour = colourToRgb565(lightenColour(faceColour, 76));
+
+    _canvas.fillRoundRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, BUTTON_CORNER_RADIUS, fillColour);
+    _canvas.drawRoundRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, BUTTON_CORNER_RADIUS, outlineColour);
 
     _canvas.setFont(&fonts::FreeSans9pt7b);
-    _canvas.setTextColor(COLOUR_CYAN_LIGHT);
+    _canvas.setTextColor(textColour);
     _canvas.setTextDatum(textdatum_t::middle_centre);
     _canvas.drawString(text, x + (BUTTON_WIDTH / 2), y + (BUTTON_HEIGHT / 2));
 }

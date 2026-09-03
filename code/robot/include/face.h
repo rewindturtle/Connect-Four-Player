@@ -335,6 +335,7 @@ class Face {
         inline const MouthParams& getMouthParams() const {return _mouth;}
         inline const FaceDecorations& getDecorations() const {return _decorations;}
         inline Colour getColour() const {return _colour;}
+        Colour getPersonalityColour() const;
         inline FaceOffset getOffset() const {return _offset;}
 };
 

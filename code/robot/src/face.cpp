@@ -380,6 +380,11 @@ void Face::setPersonality(PlayStyle personality) {
 }
 
 
+Colour Face::getPersonalityColour() const {
+    return PERSONALITY_PROFILES[_personality].colour;
+}
+
+
 void Face::_scheduleBlink(BlinkParams& blink, uint32_t now) {
     const PersonalityProfile& profile = PERSONALITY_PROFILES[_personality];
     blink.nextTime = now + randRange(profile.blinkMinWait, profile.blinkMaxWait);
