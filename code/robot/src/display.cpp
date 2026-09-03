@@ -30,21 +30,25 @@
 #define MENU_FACE_Y 100.f
 #define MAIN_MENU_BUTTON_Y 210
 
-#define SETTINGS_PLAY_STYLE_Y 180
-#define SETTINGS_MAX_DEPTH_Y 208
-#define SETTINGS_MAX_TIME_Y 236
-#define SETTINGS_IDLE_SEARCH_Y 264
+#define SETTINGS_PLAY_STYLE_Y 150
+#define SETTINGS_MAX_DEPTH_Y 178
+#define SETTINGS_MAX_TIME_Y 206
+#define SETTINGS_IDLE_SEARCH_Y 234
+#define SETTINGS_PRELOAD_MEMO_Y 150
 #define SETTINGS_ROW_HEIGHT 26
-#define SETTINGS_TITLE_X 90
-#define SETTINGS_LEFT_ARROW_X 200
+#define SETTINGS_TITLE_X 130
+#define SETTINGS_LEFT_ARROW_X 240
 #define SETTINGS_ARROW_WIDTH 30
-#define SETTINGS_STYLE_NAME_X 287
-#define SETTINGS_RIGHT_ARROW_X 344
-#define SETTINGS_VALUE_X 232
+#define SETTINGS_STYLE_NAME_X 327
+#define SETTINGS_RIGHT_ARROW_X 384
+#define SETTINGS_VALUE_X 272
 #define SETTINGS_VALUE_WIDTH 110
 #define SETTINGS_CHECKBOX_SIZE 18
+#define SETTINGS_PAGE_BUTTON_X 300
+#define SETTINGS_PAGE_BUTTON_Y 281
+#define SETTINGS_PAGE_BUTTON_WIDTH 80
 #define SETTINGS_BACK_X 388
-#define SETTINGS_BACK_Y 293
+#define SETTINGS_BACK_Y 281
 #define SETTINGS_BACK_WIDTH 80
 #define SETTINGS_BACK_HEIGHT 26
 
@@ -55,6 +59,7 @@
 #define MAX_THINKING_TIME_SECONDS 99
 #define DEFAULT_MAX_THINKING_TIME_SECONDS 10
 #define DEFAULT_IDLE_SEARCH_ENABLED false
+#define DEFAULT_MEMO_PRELOAD_ENABLED false
 
 
 static const char* const PLAY_STYLE_NAMES[PLAY_STYLE_COUNT] = {
@@ -378,6 +383,7 @@ void Display::_drawSettingValue(uint8_t value, int y, const char* suffix) {
     _settingsValueSprite.setTextColor(colourToRgb565(lightenColour(faceColour, 76)));
     _settingsValueSprite.setTextDatum(textdatum_t::middle_centre);
     _settingsValueSprite.drawString(valueText, SETTINGS_VALUE_WIDTH / 2, SETTINGS_ROW_HEIGHT / 2);
+    _settingsValueSprite.pushSprite(&_canvas, SETTINGS_VALUE_X, y);
     _settingsValueSprite.pushSprite(SETTINGS_VALUE_X, y);
 }
 
@@ -394,11 +400,12 @@ void Display::_drawCheckbox(LGFX_Sprite& target, int centerX, int centerY, bool 
 }
 
 
-void Display::_drawIdleSearchValue() {
+void Display::_drawCheckboxValue(bool checked, int y) {
     _settingsValueSprite.fillSprite(COLOUR_BG);
     _drawCheckbox(_settingsValueSprite, SETTINGS_VALUE_WIDTH / 2,
-                  SETTINGS_ROW_HEIGHT / 2, _idleSearchEnabled);
-    _settingsValueSprite.pushSprite(SETTINGS_VALUE_X, SETTINGS_IDLE_SEARCH_Y);
+                  SETTINGS_ROW_HEIGHT / 2, checked);
+    _settingsValueSprite.pushSprite(&_canvas, SETTINGS_VALUE_X, y);
+    _settingsValueSprite.pushSprite(SETTINGS_VALUE_X, y);
 }
 
 
@@ -458,6 +465,32 @@ void Display::_drawSettingsMenuScreen() {
     _drawCheckbox(_canvas, SETTINGS_STYLE_NAME_X,
                   SETTINGS_IDLE_SEARCH_Y + (SETTINGS_ROW_HEIGHT / 2), _idleSearchEnabled);
 
+    _drawUIButton("NEXT", SETTINGS_PAGE_BUTTON_X, SETTINGS_PAGE_BUTTON_Y,
+                  SETTINGS_PAGE_BUTTON_WIDTH, SETTINGS_ROW_HEIGHT);
+    _drawUIButton("BACK", SETTINGS_BACK_X, SETTINGS_BACK_Y, SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT);
+    _canvas.pushSprite(0, 0);
+
+    // The full-screen canvas repaint erased the independently rendered face.
+    _faceNeedsRedraw = true;
+}
+
+
+void Display::_drawMemoSettingsMenuScreen() {
+    if (!_faceTransform.visible) {
+        _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, MENU_FACE_Y);
+    }
+    _faceTransform.y = MENU_FACE_Y;
+    _faceTransform.scaleX = 1.f;
+    _faceTransform.scaleY = 1.f;
+
+    _drawBackground();
+    _drawUILabel("PRELOAD MEMO", SETTINGS_TITLE_X,
+                 SETTINGS_PRELOAD_MEMO_Y + (SETTINGS_ROW_HEIGHT / 2), true);
+    _drawCheckbox(_canvas, SETTINGS_STYLE_NAME_X,
+                  SETTINGS_PRELOAD_MEMO_Y + (SETTINGS_ROW_HEIGHT / 2), _memoPreloadEnabled);
+
+    _drawUIButton("PREV", SETTINGS_PAGE_BUTTON_X, SETTINGS_PAGE_BUTTON_Y,
+                  SETTINGS_PAGE_BUTTON_WIDTH, SETTINGS_ROW_HEIGHT);
     _drawUIButton("BACK", SETTINGS_BACK_X, SETTINGS_BACK_Y, SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT);
     _canvas.pushSprite(0, 0);
 
@@ -498,7 +531,13 @@ void Display::_selectMaxThinkingTime(int8_t direction) {
 
 void Display::_toggleIdleSearch() {
     _idleSearchEnabled = !_idleSearchEnabled;
-    _drawIdleSearchValue();
+    _drawCheckboxValue(_idleSearchEnabled, SETTINGS_IDLE_SEARCH_Y);
+}
+
+
+void Display::_toggleMemoPreload() {
+    _memoPreloadEnabled = !_memoPreloadEnabled;
+    _drawCheckboxValue(_memoPreloadEnabled, SETTINGS_PRELOAD_MEMO_Y);
 }
 
 
@@ -531,6 +570,21 @@ void Display::_handleTouch(uint16_t x, uint16_t y) {
             } else if (pointInRect(x, y, SETTINGS_VALUE_X, SETTINGS_IDLE_SEARCH_Y,
                                    SETTINGS_VALUE_WIDTH, SETTINGS_ROW_HEIGHT)) {
                 _toggleIdleSearch();
+            } else if (pointInRect(x, y, SETTINGS_PAGE_BUTTON_X, SETTINGS_PAGE_BUTTON_Y,
+                                   SETTINGS_PAGE_BUTTON_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                setScreen(SCREEN_MEMO_SETTINGS_MENU);
+            } else if (pointInRect(x, y, SETTINGS_BACK_X, SETTINGS_BACK_Y,
+                                   SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT)) {
+                setScreen(SCREEN_MAIN_MENU);
+            }
+            break;
+        case SCREEN_MEMO_SETTINGS_MENU:
+            if (pointInRect(x, y, SETTINGS_VALUE_X, SETTINGS_PRELOAD_MEMO_Y,
+                            SETTINGS_VALUE_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                _toggleMemoPreload();
+            } else if (pointInRect(x, y, SETTINGS_PAGE_BUTTON_X, SETTINGS_PAGE_BUTTON_Y,
+                                   SETTINGS_PAGE_BUTTON_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                setScreen(SCREEN_SETTINGS_MENU);
             } else if (pointInRect(x, y, SETTINGS_BACK_X, SETTINGS_BACK_Y,
                                    SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT)) {
                 setScreen(SCREEN_MAIN_MENU);
@@ -569,7 +623,8 @@ Display::Display()
       _touchWasPressed(false),
       _maxSearchDepth(DEFAULT_MAX_SEARCH_DEPTH),
       _maxThinkingTimeSeconds(DEFAULT_MAX_THINKING_TIME_SECONDS),
-      _idleSearchEnabled(DEFAULT_IDLE_SEARCH_ENABLED) {}
+      _idleSearchEnabled(DEFAULT_IDLE_SEARCH_ENABLED),
+      _memoPreloadEnabled(DEFAULT_MEMO_PRELOAD_ENABLED) {}
 
 
 void Display::init() {
@@ -606,6 +661,9 @@ void Display::draw() {
                 break;
             case SCREEN_SETTINGS_MENU:
                 _drawSettingsMenuScreen();
+                break;
+            case SCREEN_MEMO_SETTINGS_MENU:
+                _drawMemoSettingsMenuScreen();
                 break;
             case SCREEN_NULL:
                 break;

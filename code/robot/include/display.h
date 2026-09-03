@@ -12,7 +12,8 @@ enum FaceState : uint8_t;
 enum ScreenState : uint8_t {
     SCREEN_NULL,
     SCREEN_MAIN_MENU,
-    SCREEN_SETTINGS_MENU
+    SCREEN_SETTINGS_MENU,
+    SCREEN_MEMO_SETTINGS_MENU
 };
 
 
@@ -41,6 +42,7 @@ class Display {
         uint8_t _maxSearchDepth;
         uint8_t _maxThinkingTimeSeconds;
         bool _idleSearchEnabled;
+        bool _memoPreloadEnabled;
 
         void _drawFace(uint32_t now);
         void _showFace(FaceState state, float x, float y);
@@ -49,14 +51,16 @@ class Display {
         void _drawUILabel(const char* text, int x, int y, bool compact = false);
         void _drawSettingValue(uint8_t value, int y, const char* suffix = "");
         void _drawCheckbox(LGFX_Sprite& target, int centerX, int centerY, bool checked);
-        void _drawIdleSearchValue();
+        void _drawCheckboxValue(bool checked, int y);
         void _drawMainMenuScreen();
         void _drawSettingsMenuScreen();
+        void _drawMemoSettingsMenuScreen();
         void _handleTouch(uint16_t x, uint16_t y);
         void _selectPlayStyle(int8_t direction);
         void _selectMaxSearchDepth(int8_t direction);
         void _selectMaxThinkingTime(int8_t direction);
         void _toggleIdleSearch();
+        void _toggleMemoPreload();
     public:
         Display();
 
@@ -73,6 +77,7 @@ class Display {
         inline uint8_t getMaxSearchDepth() const {return _maxSearchDepth;}
         inline uint8_t getMaxThinkingTimeSeconds() const {return _maxThinkingTimeSeconds;}
         inline bool isIdleSearchEnabled() const {return _idleSearchEnabled;}
+        inline bool isMemoPreloadEnabled() const {return _memoPreloadEnabled;}
 };
 
 #endif // DISPLAY_H
