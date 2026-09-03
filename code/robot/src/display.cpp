@@ -30,9 +30,10 @@
 #define MENU_FACE_Y 100.f
 #define MAIN_MENU_BUTTON_Y 210
 
-#define SETTINGS_PLAY_STYLE_Y 210
-#define SETTINGS_MAX_DEPTH_Y 238
-#define SETTINGS_MAX_TIME_Y 266
+#define SETTINGS_PLAY_STYLE_Y 180
+#define SETTINGS_MAX_DEPTH_Y 208
+#define SETTINGS_MAX_TIME_Y 236
+#define SETTINGS_IDLE_SEARCH_Y 264
 #define SETTINGS_ROW_HEIGHT 26
 #define SETTINGS_TITLE_X 90
 #define SETTINGS_LEFT_ARROW_X 200
@@ -41,6 +42,7 @@
 #define SETTINGS_RIGHT_ARROW_X 344
 #define SETTINGS_VALUE_X 232
 #define SETTINGS_VALUE_WIDTH 110
+#define SETTINGS_CHECKBOX_SIZE 18
 #define SETTINGS_BACK_X 388
 #define SETTINGS_BACK_Y 293
 #define SETTINGS_BACK_WIDTH 80
@@ -52,6 +54,7 @@
 #define MIN_THINKING_TIME_SECONDS 1
 #define MAX_THINKING_TIME_SECONDS 99
 #define DEFAULT_MAX_THINKING_TIME_SECONDS 10
+#define DEFAULT_IDLE_SEARCH_ENABLED false
 
 
 static const char* const PLAY_STYLE_NAMES[PLAY_STYLE_COUNT] = {
@@ -307,12 +310,17 @@ void Display::_drawFace(uint32_t now) {
     drawDecorationLine(_faceSprite, decorations.accentLine2, offset, colour);
     drawTeardrop(_faceSprite, decorations.teardrop, offset, colour);
 
-    // The SDL backend presents every panel write on its own, so the transform is
-    // composed off-screen and the finished frame blitted in a single call.
+    // Seed the transform frame with the menu underneath it. This lets settings
+    // sit close to the visible face without its larger rotation-safe frame
+    // erasing them on an animated redraw.
     const float centre = 0.5f * FACE_FRAME_SIZE;
+    const int frameX = static_cast<int>(_faceTransform.x - centre);
+    const int frameY = static_cast<int>(_faceTransform.y - centre);
     _faceFrame.fillSprite(COLOUR_BG);
-    _faceSprite.pushRotateZoom(&_faceFrame, centre, centre, _faceTransform.rotation, _faceTransform.scaleX, _faceTransform.scaleY);
-    _faceFrame.pushSprite(&_display, static_cast<int>(_faceTransform.x - centre), static_cast<int>(_faceTransform.y - centre));
+    _canvas.pushSprite(&_faceFrame, -frameX, -frameY);
+    _faceSprite.pushRotateZoom(&_faceFrame, centre, centre, _faceTransform.rotation,
+                               _faceTransform.scaleX, _faceTransform.scaleY, COLOUR_BG);
+    _faceFrame.pushSprite(&_display, frameX, frameY);
 }
 
 
@@ -374,6 +382,26 @@ void Display::_drawSettingValue(uint8_t value, int y, const char* suffix) {
 }
 
 
+void Display::_drawCheckbox(LGFX_Sprite& target, int centerX, int centerY, bool checked) {
+    Colour faceColour = Face::getFace().getPersonalityColour();
+    uint16_t outlineColour = colourToRgb565(faceColour);
+    int x = centerX - (SETTINGS_CHECKBOX_SIZE / 2);
+    int y = centerY - (SETTINGS_CHECKBOX_SIZE / 2);
+
+    target.fillRect(x, y, SETTINGS_CHECKBOX_SIZE, SETTINGS_CHECKBOX_SIZE,
+                    checked ? outlineColour : COLOUR_BG);
+    target.drawRect(x, y, SETTINGS_CHECKBOX_SIZE, SETTINGS_CHECKBOX_SIZE, outlineColour);
+}
+
+
+void Display::_drawIdleSearchValue() {
+    _settingsValueSprite.fillSprite(COLOUR_BG);
+    _drawCheckbox(_settingsValueSprite, SETTINGS_VALUE_WIDTH / 2,
+                  SETTINGS_ROW_HEIGHT / 2, _idleSearchEnabled);
+    _settingsValueSprite.pushSprite(SETTINGS_VALUE_X, SETTINGS_IDLE_SEARCH_Y);
+}
+
+
 void Display::_drawMainMenuScreen() {
     _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, MENU_FACE_Y);
 
@@ -425,6 +453,11 @@ void Display::_drawSettingsMenuScreen() {
     _drawUIButton(">", SETTINGS_RIGHT_ARROW_X, SETTINGS_MAX_TIME_Y,
                   SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT);
 
+    _drawUILabel("IDLE SEARCH", SETTINGS_TITLE_X,
+                 SETTINGS_IDLE_SEARCH_Y + (SETTINGS_ROW_HEIGHT / 2), true);
+    _drawCheckbox(_canvas, SETTINGS_STYLE_NAME_X,
+                  SETTINGS_IDLE_SEARCH_Y + (SETTINGS_ROW_HEIGHT / 2), _idleSearchEnabled);
+
     _drawUIButton("BACK", SETTINGS_BACK_X, SETTINGS_BACK_Y, SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT);
     _canvas.pushSprite(0, 0);
 
@@ -463,6 +496,12 @@ void Display::_selectMaxThinkingTime(int8_t direction) {
 }
 
 
+void Display::_toggleIdleSearch() {
+    _idleSearchEnabled = !_idleSearchEnabled;
+    _drawIdleSearchValue();
+}
+
+
 void Display::_handleTouch(uint16_t x, uint16_t y) {
     switch (_screenState) {
         case SCREEN_MAIN_MENU:
@@ -489,6 +528,9 @@ void Display::_handleTouch(uint16_t x, uint16_t y) {
             } else if (pointInRect(x, y, SETTINGS_RIGHT_ARROW_X, SETTINGS_MAX_TIME_Y,
                                    SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
                 _selectMaxThinkingTime(1);
+            } else if (pointInRect(x, y, SETTINGS_VALUE_X, SETTINGS_IDLE_SEARCH_Y,
+                                   SETTINGS_VALUE_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                _toggleIdleSearch();
             } else if (pointInRect(x, y, SETTINGS_BACK_X, SETTINGS_BACK_Y,
                                    SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT)) {
                 setScreen(SCREEN_MAIN_MENU);
@@ -526,7 +568,8 @@ Display::Display()
       _faceNeedsRedraw(false),
       _touchWasPressed(false),
       _maxSearchDepth(DEFAULT_MAX_SEARCH_DEPTH),
-      _maxThinkingTimeSeconds(DEFAULT_MAX_THINKING_TIME_SECONDS) {}
+      _maxThinkingTimeSeconds(DEFAULT_MAX_THINKING_TIME_SECONDS),
+      _idleSearchEnabled(DEFAULT_IDLE_SEARCH_ENABLED) {}
 
 
 void Display::init() {

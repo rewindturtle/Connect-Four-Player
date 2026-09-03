@@ -40,6 +40,7 @@ class Display {
         bool _touchWasPressed;
         uint8_t _maxSearchDepth;
         uint8_t _maxThinkingTimeSeconds;
+        bool _idleSearchEnabled;
 
         void _drawFace(uint32_t now);
         void _showFace(FaceState state, float x, float y);
@@ -47,12 +48,15 @@ class Display {
         void _drawUIButton(const char* text, int x, int y, int width, int height);
         void _drawUILabel(const char* text, int x, int y, bool compact = false);
         void _drawSettingValue(uint8_t value, int y, const char* suffix = "");
+        void _drawCheckbox(LGFX_Sprite& target, int centerX, int centerY, bool checked);
+        void _drawIdleSearchValue();
         void _drawMainMenuScreen();
         void _drawSettingsMenuScreen();
         void _handleTouch(uint16_t x, uint16_t y);
         void _selectPlayStyle(int8_t direction);
         void _selectMaxSearchDepth(int8_t direction);
         void _selectMaxThinkingTime(int8_t direction);
+        void _toggleIdleSearch();
     public:
         Display();
 
@@ -68,6 +72,7 @@ class Display {
         void setFacePlayStyle(PlayStyle playStyle);
         inline uint8_t getMaxSearchDepth() const {return _maxSearchDepth;}
         inline uint8_t getMaxThinkingTimeSeconds() const {return _maxThinkingTimeSeconds;}
+        inline bool isIdleSearchEnabled() const {return _idleSearchEnabled;}
 };
 
 #endif // DISPLAY_H
