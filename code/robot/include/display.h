@@ -12,8 +12,17 @@ enum FaceState : uint8_t;
 enum ScreenState : uint8_t {
     SCREEN_NULL,
     SCREEN_MAIN_MENU,
+    SCREEN_GAME_SETUP_MENU,
     SCREEN_SETTINGS_MENU,
     SCREEN_MEMO_SETTINGS_MENU
+};
+
+
+enum FirstPlayerOption : uint8_t {
+    FIRST_PLAYER_COMPUTER,
+    FIRST_PLAYER_HUMAN,
+    FIRST_PLAYER_RANDOM,
+    FIRST_PLAYER_OPTION_COUNT
 };
 
 
@@ -23,6 +32,9 @@ class Display {
             UI_BUTTON_NONE,
             UI_BUTTON_PLAY,
             UI_BUTTON_SETTINGS,
+            UI_BUTTON_FIRST_PLAYER_PREVIOUS,
+            UI_BUTTON_FIRST_PLAYER_NEXT,
+            UI_BUTTON_START,
             UI_BUTTON_PLAY_STYLE_PREVIOUS,
             UI_BUTTON_PLAY_STYLE_NEXT,
             UI_BUTTON_MAX_DEPTH_DECREASE,
@@ -60,6 +72,7 @@ class Display {
         UIButton _pressedButton;
         uint16_t _lastTouchX;
         uint16_t _lastTouchY;
+        FirstPlayerOption _firstPlayerOption;
         uint8_t _maxSearchDepth;
         uint8_t _maxThinkingTimeSeconds;
         uint8_t _mistakeProbabilityPercent;
@@ -77,13 +90,17 @@ class Display {
         void _activateButton(UIButton button);
         void _releaseButton(uint16_t x, uint16_t y);
         void _drawUILabel(const char* text, int x, int y, bool compact = false);
+        void _drawSettingTextValue(const char* text, int y, bool compact = false);
         void _drawSettingValue(uint8_t value, int y, const char* suffix = "");
         void _drawCheckbox(LGFX_Sprite& target, int centerX, int centerY, bool checked);
         void _drawCheckboxValue(bool checked, int y);
         void _drawMainMenuScreen();
+        void _drawGameSetupMenuScreen();
         void _drawSettingsMenuScreen();
         void _drawMemoSettingsMenuScreen();
         void _handleTouch(uint16_t x, uint16_t y);
+        const char* _getFirstPlayerName() const;
+        void _selectFirstPlayer(int8_t direction);
         void _selectPlayStyle(int8_t direction);
         void _selectMaxSearchDepth(int8_t direction);
         void _selectMaxThinkingTime(int8_t direction);
@@ -104,6 +121,7 @@ class Display {
         void setScreen(ScreenState state);
         inline ScreenState getScreen() const {return _screenState;}
         void setFacePlayStyle(PlayStyle playStyle);
+        inline FirstPlayerOption getFirstPlayerOption() const {return _firstPlayerOption;}
         inline uint8_t getMaxSearchDepth() const {return _maxSearchDepth;}
         inline uint8_t getMaxThinkingTimeSeconds() const {return _maxThinkingTimeSeconds;}
         inline uint8_t getMistakeProbabilityPercent() const {return _mistakeProbabilityPercent;}

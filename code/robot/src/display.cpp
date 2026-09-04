@@ -6,8 +6,8 @@
 #include <math.h>
 #include <stdio.h>
 
-#define SCREEN_WIDTH 480
-#define SCREEN_HEIGHT 320
+#define SCREEN_WIDTH 320
+#define SCREEN_HEIGHT 480
 
 #define COLOUR_BG 0x0862
 #define COLOUR_GRID 0x1988
@@ -17,40 +17,47 @@
 
 #define FACE_SPRITE_W 160
 #define FACE_SPRITE_H 150
+#define FACE_ARTWORK_CENTER_X 70.f
 // Sized to the face sprite's diagonal so a rotated face still fits inside.
-#define FACE_FRAME_SIZE 220
+#define FACE_FRAME_SIZE 416
 #define FACE_REFRESH_RATE_MS 50
+#define MENU_FACE_SCALE 1.75f
 
 #define BUTTON_WIDTH 160
 #define BUTTON_HEIGHT 52
 #define BUTTON_CORNER_RADIUS 4
 #define BUTTON_GAP 16
-#define BUTTON_PLAY_X (240 - BUTTON_WIDTH - (BUTTON_GAP / 2))
-#define BUTTON_SETTINGS_X (240 + (BUTTON_GAP / 2))
-#define MENU_FACE_Y 100.f
-#define MAIN_MENU_BUTTON_Y 210
+#define BUTTON_PLAY_X ((SCREEN_WIDTH - BUTTON_WIDTH) / 2)
+#define BUTTON_SETTINGS_X BUTTON_PLAY_X
+#define MENU_FACE_Y 150.f
+#define MAIN_MENU_PLAY_Y 250
+#define MAIN_MENU_SETTINGS_Y (MAIN_MENU_PLAY_Y + BUTTON_HEIGHT + BUTTON_GAP)
 
-#define SETTINGS_PLAY_STYLE_Y 150
-#define SETTINGS_MAX_DEPTH_Y 178
-#define SETTINGS_MAX_TIME_Y 206
-#define SETTINGS_IDLE_SEARCH_Y 234
-#define SETTINGS_PRELOAD_MEMO_Y 150
-#define SETTINGS_CAN_PANIC_Y 178
-#define SETTINGS_MISTAKE_PROBABILITY_Y 206
+#define GAME_SETUP_FIRST_PLAYER_Y 250
+#define GAME_SETUP_START_X ((SCREEN_WIDTH - BUTTON_WIDTH) / 2)
+#define GAME_SETUP_START_Y 310
+
+#define SETTINGS_PLAY_STYLE_Y 250
+#define SETTINGS_MAX_DEPTH_Y 292
+#define SETTINGS_MAX_TIME_Y 334
+#define SETTINGS_IDLE_SEARCH_Y 376
+#define SETTINGS_PRELOAD_MEMO_Y 250
+#define SETTINGS_CAN_PANIC_Y 292
+#define SETTINGS_MISTAKE_PROBABILITY_Y 334
 #define SETTINGS_ROW_HEIGHT 26
-#define SETTINGS_TITLE_X 130
-#define SETTINGS_LEFT_ARROW_X 240
+#define SETTINGS_TITLE_X 78
+#define SETTINGS_LEFT_ARROW_X 157
 #define SETTINGS_ARROW_WIDTH 30
-#define SETTINGS_STYLE_NAME_X 327
-#define SETTINGS_RIGHT_ARROW_X 384
-#define SETTINGS_VALUE_X 272
-#define SETTINGS_VALUE_WIDTH 110
+#define SETTINGS_STYLE_NAME_X 234
+#define SETTINGS_RIGHT_ARROW_X 281
+#define SETTINGS_VALUE_X 187
+#define SETTINGS_VALUE_WIDTH 94
 #define SETTINGS_CHECKBOX_SIZE 18
-#define SETTINGS_PAGE_BUTTON_X 300
-#define SETTINGS_PAGE_BUTTON_Y 281
+#define SETTINGS_PAGE_BUTTON_X 140
+#define SETTINGS_PAGE_BUTTON_Y 438
 #define SETTINGS_PAGE_BUTTON_WIDTH 80
-#define SETTINGS_BACK_X 388
-#define SETTINGS_BACK_Y 281
+#define SETTINGS_BACK_X 228
+#define SETTINGS_BACK_Y 438
 #define SETTINGS_BACK_WIDTH 80
 #define SETTINGS_BACK_HEIGHT 26
 
@@ -67,6 +74,7 @@
 #define DEFAULT_IDLE_SEARCH_ENABLED false
 #define DEFAULT_MEMO_PRELOAD_ENABLED false
 #define DEFAULT_CAN_PANIC false
+#define DEFAULT_FIRST_PLAYER_OPTION FIRST_PLAYER_RANDOM
 
 
 static const char* const PLAY_STYLE_NAMES[PLAY_STYLE_COUNT] = {
@@ -340,7 +348,7 @@ void Display::_showFace(FaceState state, float x, float y) {
     Face& face = Face::getFace();
     face.setState(state);
 
-    _faceTransform = {x, y, 0.f, 1.f, 1.f, true};
+    _faceTransform = {x, y, 0.f, MENU_FACE_SCALE, MENU_FACE_SCALE, true};
     // The screen repaint underneath wipes the face, and the face may be idle.
     _faceNeedsRedraw = true;
 }
@@ -382,14 +390,31 @@ bool Display::_getButtonLayout(UIButton button, const char*& text,
         case UI_BUTTON_PLAY:
             text = "PLAY";
             x = BUTTON_PLAY_X;
-            y = MAIN_MENU_BUTTON_Y;
+            y = MAIN_MENU_PLAY_Y;
             width = BUTTON_WIDTH;
             height = BUTTON_HEIGHT;
             return true;
         case UI_BUTTON_SETTINGS:
             text = "SETTINGS";
             x = BUTTON_SETTINGS_X;
-            y = MAIN_MENU_BUTTON_Y;
+            y = MAIN_MENU_SETTINGS_Y;
+            width = BUTTON_WIDTH;
+            height = BUTTON_HEIGHT;
+            return true;
+        case UI_BUTTON_FIRST_PLAYER_PREVIOUS:
+            text = "<";
+            x = SETTINGS_LEFT_ARROW_X;
+            y = GAME_SETUP_FIRST_PLAYER_Y;
+            return true;
+        case UI_BUTTON_FIRST_PLAYER_NEXT:
+            text = ">";
+            x = SETTINGS_RIGHT_ARROW_X;
+            y = GAME_SETUP_FIRST_PLAYER_Y;
+            return true;
+        case UI_BUTTON_START:
+            text = "START";
+            x = GAME_SETUP_START_X;
+            y = GAME_SETUP_START_Y;
             width = BUTTON_WIDTH;
             height = BUTTON_HEIGHT;
             return true;
@@ -463,11 +488,29 @@ bool Display::_getButtonLayout(UIButton button, const char*& text,
 Display::UIButton Display::_buttonAt(uint16_t x, uint16_t y) const {
     switch (_screenState) {
         case SCREEN_MAIN_MENU:
-            if (pointInRect(x, y, BUTTON_PLAY_X, MAIN_MENU_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+            if (pointInRect(x, y, BUTTON_PLAY_X, MAIN_MENU_PLAY_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
                 return UI_BUTTON_PLAY;
             }
-            if (pointInRect(x, y, BUTTON_SETTINGS_X, MAIN_MENU_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+            if (pointInRect(x, y, BUTTON_SETTINGS_X, MAIN_MENU_SETTINGS_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
                 return UI_BUTTON_SETTINGS;
+            }
+            break;
+        case SCREEN_GAME_SETUP_MENU:
+            if (pointInRect(x, y, SETTINGS_LEFT_ARROW_X, GAME_SETUP_FIRST_PLAYER_Y,
+                            SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                return UI_BUTTON_FIRST_PLAYER_PREVIOUS;
+            }
+            if (pointInRect(x, y, SETTINGS_RIGHT_ARROW_X, GAME_SETUP_FIRST_PLAYER_Y,
+                            SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                return UI_BUTTON_FIRST_PLAYER_NEXT;
+            }
+            if (pointInRect(x, y, GAME_SETUP_START_X, GAME_SETUP_START_Y,
+                            BUTTON_WIDTH, BUTTON_HEIGHT)) {
+                return UI_BUTTON_START;
+            }
+            if (pointInRect(x, y, SETTINGS_BACK_X, SETTINGS_BACK_Y,
+                            SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT)) {
+                return UI_BUTTON_BACK;
             }
             break;
         case SCREEN_SETTINGS_MENU:
@@ -553,8 +596,17 @@ void Display::_redrawButton(UIButton button, bool highlighted) {
 
 void Display::_activateButton(UIButton button) {
     switch (button) {
+        case UI_BUTTON_PLAY:
+            setScreen(SCREEN_GAME_SETUP_MENU);
+            break;
         case UI_BUTTON_SETTINGS:
             setScreen(SCREEN_SETTINGS_MENU);
+            break;
+        case UI_BUTTON_FIRST_PLAYER_PREVIOUS:
+            _selectFirstPlayer(-1);
+            break;
+        case UI_BUTTON_FIRST_PLAYER_NEXT:
+            _selectFirstPlayer(1);
             break;
         case UI_BUTTON_PLAY_STYLE_PREVIOUS:
             _selectPlayStyle(-1);
@@ -589,7 +641,7 @@ void Display::_activateButton(UIButton button) {
         case UI_BUTTON_BACK:
             setScreen(SCREEN_MAIN_MENU);
             break;
-        case UI_BUTTON_PLAY:
+        case UI_BUTTON_START:
         case UI_BUTTON_NONE:
             break;
     }
@@ -620,18 +672,26 @@ void Display::_drawUILabel(const char* text, int x, int y, bool compact) {
 }
 
 
+void Display::_drawSettingTextValue(const char* text, int y, bool compact) {
+    Colour faceColour = Face::getFace().getPersonalityColour();
+    _settingsValueSprite.fillSprite(COLOUR_BG);
+    if (compact) {
+        _settingsValueSprite.setFont(&fonts::Font2);
+    } else {
+        _settingsValueSprite.setFont(&fonts::FreeSans9pt7b);
+    }
+    _settingsValueSprite.setTextColor(colourToRgb565(lightenColour(faceColour, 76)));
+    _settingsValueSprite.setTextDatum(textdatum_t::middle_centre);
+    _settingsValueSprite.drawString(text, SETTINGS_VALUE_WIDTH / 2, SETTINGS_ROW_HEIGHT / 2);
+    _settingsValueSprite.pushSprite(&_canvas, SETTINGS_VALUE_X, y);
+    _settingsValueSprite.pushSprite(SETTINGS_VALUE_X, y);
+}
+
+
 void Display::_drawSettingValue(uint8_t value, int y, const char* suffix) {
     char valueText[6];
     snprintf(valueText, sizeof(valueText), "%u%s", static_cast<unsigned>(value), suffix);
-
-    Colour faceColour = Face::getFace().getPersonalityColour();
-    _settingsValueSprite.fillSprite(COLOUR_BG);
-    _settingsValueSprite.setFont(&fonts::FreeSans9pt7b);
-    _settingsValueSprite.setTextColor(colourToRgb565(lightenColour(faceColour, 76)));
-    _settingsValueSprite.setTextDatum(textdatum_t::middle_centre);
-    _settingsValueSprite.drawString(valueText, SETTINGS_VALUE_WIDTH / 2, SETTINGS_ROW_HEIGHT / 2);
-    _settingsValueSprite.pushSprite(&_canvas, SETTINGS_VALUE_X, y);
-    _settingsValueSprite.pushSprite(SETTINGS_VALUE_X, y);
+    _drawSettingTextValue(valueText, y);
 }
 
 
@@ -660,9 +720,36 @@ void Display::_drawMainMenuScreen() {
     _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, MENU_FACE_Y);
 
     _drawBackground();
-    _drawUIButton("PLAY", BUTTON_PLAY_X, MAIN_MENU_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT);
-    _drawUIButton("SETTINGS", BUTTON_SETTINGS_X, MAIN_MENU_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT);
+    _drawUIButton("PLAY", BUTTON_PLAY_X, MAIN_MENU_PLAY_Y, BUTTON_WIDTH, BUTTON_HEIGHT);
+    _drawUIButton("SETTINGS", BUTTON_SETTINGS_X, MAIN_MENU_SETTINGS_Y, BUTTON_WIDTH, BUTTON_HEIGHT);
     _canvas.pushSprite(0, 0);
+}
+
+
+void Display::_drawGameSetupMenuScreen() {
+    if (!_faceTransform.visible) {
+        _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, MENU_FACE_Y);
+    }
+    _faceTransform.y = MENU_FACE_Y;
+    _faceTransform.scaleX = MENU_FACE_SCALE;
+    _faceTransform.scaleY = MENU_FACE_SCALE;
+
+    _drawBackground();
+    _drawUILabel("FIRST PLAY", SETTINGS_TITLE_X,
+                 GAME_SETUP_FIRST_PLAYER_Y + (SETTINGS_ROW_HEIGHT / 2), true);
+    _drawUIButton("<", SETTINGS_LEFT_ARROW_X, GAME_SETUP_FIRST_PLAYER_Y,
+                  SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT);
+    _drawUILabel(_getFirstPlayerName(), SETTINGS_STYLE_NAME_X,
+                 GAME_SETUP_FIRST_PLAYER_Y + (SETTINGS_ROW_HEIGHT / 2), true);
+    _drawUIButton(">", SETTINGS_RIGHT_ARROW_X, GAME_SETUP_FIRST_PLAYER_Y,
+                  SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT);
+
+    _drawUIButton("START", GAME_SETUP_START_X, GAME_SETUP_START_Y, BUTTON_WIDTH, BUTTON_HEIGHT);
+    _drawUIButton("BACK", SETTINGS_BACK_X, SETTINGS_BACK_Y, SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT);
+    _canvas.pushSprite(0, 0);
+
+    // The full-screen canvas repaint erased the independently rendered face.
+    _faceNeedsRedraw = true;
 }
 
 
@@ -671,8 +758,8 @@ void Display::_drawSettingsMenuScreen() {
         _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, MENU_FACE_Y);
     }
     _faceTransform.y = MENU_FACE_Y;
-    _faceTransform.scaleX = 1.f;
-    _faceTransform.scaleY = 1.f;
+    _faceTransform.scaleX = MENU_FACE_SCALE;
+    _faceTransform.scaleY = MENU_FACE_SCALE;
 
     char depthText[3];
     snprintf(depthText, sizeof(depthText), "%u", static_cast<unsigned>(_maxSearchDepth));
@@ -685,7 +772,7 @@ void Display::_drawSettingsMenuScreen() {
     _drawUIButton("<", SETTINGS_LEFT_ARROW_X, SETTINGS_PLAY_STYLE_Y,
                   SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT);
     _drawUILabel(PLAY_STYLE_NAMES[Face::getFace().getPersonality()],
-                 SETTINGS_STYLE_NAME_X, SETTINGS_PLAY_STYLE_Y + (SETTINGS_ROW_HEIGHT / 2));
+                 SETTINGS_STYLE_NAME_X, SETTINGS_PLAY_STYLE_Y + (SETTINGS_ROW_HEIGHT / 2), true);
     _drawUIButton(">", SETTINGS_RIGHT_ARROW_X, SETTINGS_PLAY_STYLE_Y,
                   SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT);
 
@@ -727,8 +814,8 @@ void Display::_drawMemoSettingsMenuScreen() {
         _showFace(FACE_NEUTRAL, 0.5f * SCREEN_WIDTH, MENU_FACE_Y);
     }
     _faceTransform.y = MENU_FACE_Y;
-    _faceTransform.scaleX = 1.f;
-    _faceTransform.scaleY = 1.f;
+    _faceTransform.scaleX = MENU_FACE_SCALE;
+    _faceTransform.scaleY = MENU_FACE_SCALE;
 
     _drawBackground();
     _drawUILabel("PRELOAD MEMO", SETTINGS_TITLE_X,
@@ -762,6 +849,33 @@ void Display::_drawMemoSettingsMenuScreen() {
 
     // The full-screen canvas repaint erased the independently rendered face.
     _faceNeedsRedraw = true;
+}
+
+
+const char* Display::_getFirstPlayerName() const {
+    switch (_firstPlayerOption) {
+        case FIRST_PLAYER_COMPUTER:
+            return "COMPUTER";
+        case FIRST_PLAYER_HUMAN:
+            return "PLAYER";
+        case FIRST_PLAYER_RANDOM:
+            return "RANDOM";
+        case FIRST_PLAYER_OPTION_COUNT:
+            break;
+    }
+
+    return "RANDOM";
+}
+
+
+void Display::_selectFirstPlayer(int8_t direction) {
+    int next = static_cast<int>(_firstPlayerOption) + direction;
+    if (next < 0) next = FIRST_PLAYER_OPTION_COUNT - 1;
+    if (next >= FIRST_PLAYER_OPTION_COUNT) next = 0;
+    if (next == _firstPlayerOption) return;
+
+    _firstPlayerOption = static_cast<FirstPlayerOption>(next);
+    _drawSettingTextValue(_getFirstPlayerName(), GAME_SETUP_FIRST_PLAYER_Y, true);
 }
 
 
@@ -836,6 +950,8 @@ void Display::_handleTouch(uint16_t x, uint16_t y) {
     switch (_screenState) {
         case SCREEN_MAIN_MENU:
             break;
+        case SCREEN_GAME_SETUP_MENU:
+            break;
         case SCREEN_SETTINGS_MENU:
             if (pointInRect(x, y, SETTINGS_VALUE_X, SETTINGS_IDLE_SEARCH_Y,
                             SETTINGS_VALUE_WIDTH, SETTINGS_ROW_HEIGHT)) {
@@ -886,6 +1002,7 @@ Display::Display()
       _pressedButton(UI_BUTTON_NONE),
       _lastTouchX(0),
       _lastTouchY(0),
+      _firstPlayerOption(DEFAULT_FIRST_PLAYER_OPTION),
       _maxSearchDepth(DEFAULT_MAX_SEARCH_DEPTH),
       _maxThinkingTimeSeconds(DEFAULT_MAX_THINKING_TIME_SECONDS),
       _mistakeProbabilityPercent(DEFAULT_MISTAKE_PROBABILITY_PERCENT),
@@ -896,12 +1013,17 @@ Display::Display()
 
 void Display::init() {
     _display.init();
-    _display.setRotation(0);
+    #ifdef C4_DESKTOP
+        _display.setRotation(0);
+    #else
+        _display.setRotation(1);
+    #endif
     _display.setBrightness(128);
     _display.setColorDepth(16);
 
     initSprite(_canvas, SCREEN_WIDTH, SCREEN_HEIGHT);
     initSprite(_faceSprite, FACE_SPRITE_W, FACE_SPRITE_H);
+    _faceSprite.setPivot(FACE_ARTWORK_CENTER_X, 0.5f * FACE_SPRITE_H);
     initSprite(_faceFrame, FACE_FRAME_SIZE, FACE_FRAME_SIZE);
     initSprite(_settingsValueSprite, SETTINGS_VALUE_WIDTH, SETTINGS_ROW_HEIGHT);
     initSprite(_buttonSprite, BUTTON_WIDTH, BUTTON_HEIGHT);
@@ -933,6 +1055,9 @@ void Display::draw() {
         switch (_screenState) {
             case SCREEN_MAIN_MENU:
                 _drawMainMenuScreen();
+                break;
+            case SCREEN_GAME_SETUP_MENU:
+                _drawGameSetupMenuScreen();
                 break;
             case SCREEN_SETTINGS_MENU:
                 _drawSettingsMenuScreen();
