@@ -35,6 +35,8 @@
 #define SETTINGS_MAX_TIME_Y 206
 #define SETTINGS_IDLE_SEARCH_Y 234
 #define SETTINGS_PRELOAD_MEMO_Y 150
+#define SETTINGS_CAN_PANIC_Y 178
+#define SETTINGS_MISTAKE_PROBABILITY_Y 206
 #define SETTINGS_ROW_HEIGHT 26
 #define SETTINGS_TITLE_X 130
 #define SETTINGS_LEFT_ARROW_X 240
@@ -58,8 +60,13 @@
 #define MIN_THINKING_TIME_SECONDS 1
 #define MAX_THINKING_TIME_SECONDS 99
 #define DEFAULT_MAX_THINKING_TIME_SECONDS 10
+#define MIN_MISTAKE_PROBABILITY_PERCENT 0
+#define MAX_MISTAKE_PROBABILITY_PERCENT 100
+#define MISTAKE_PROBABILITY_STEP_PERCENT 5
+#define DEFAULT_MISTAKE_PROBABILITY_PERCENT 20
 #define DEFAULT_IDLE_SEARCH_ENABLED false
 #define DEFAULT_MEMO_PRELOAD_ENABLED false
+#define DEFAULT_CAN_PANIC false
 
 
 static const char* const PLAY_STYLE_NAMES[PLAY_STYLE_COUNT] = {
@@ -76,7 +83,7 @@ static const char* const PLAY_STYLE_NAMES[PLAY_STYLE_COUNT] = {
 };
 
 
-static uint16_t colourToRgb565(const Colour& c) {
+static inline uint16_t colourToRgb565(const Colour& c) {
     return ((c.r >> 3) << 11) | ((c.g >> 2) << 5) | (c.b >> 3);
 }
 
@@ -344,11 +351,17 @@ void Display::_drawBackground() {
 }
 
 
-void Display::_drawUIButton(const char* text, int x, int y, int width, int height) {
+void Display::_drawUIButton(const char* text, int x, int y, int width, int height, bool highlighted) {
     Colour faceColour = Face::getFace().getPersonalityColour();
-    uint16_t fillColour = colourToRgb565(dimColour(faceColour, 48));
-    uint16_t outlineColour = colourToRgb565(faceColour);
-    uint16_t textColour = colourToRgb565(lightenColour(faceColour, 76));
+    uint16_t fillColour = highlighted
+                        ? colourToRgb565(lightenColour(faceColour, 76))
+                        : colourToRgb565(dimColour(faceColour, 48));
+    uint16_t outlineColour = highlighted
+                           ? colourToRgb565(lightenColour(faceColour, 160))
+                           : colourToRgb565(faceColour);
+    uint16_t textColour = highlighted
+                        ? COLOUR_BG
+                        : colourToRgb565(lightenColour(faceColour, 76));
 
     _canvas.fillRoundRect(x, y, width, height, BUTTON_CORNER_RADIUS, fillColour);
     _canvas.drawRoundRect(x, y, width, height, BUTTON_CORNER_RADIUS, outlineColour);
@@ -357,6 +370,240 @@ void Display::_drawUIButton(const char* text, int x, int y, int width, int heigh
     _canvas.setTextColor(textColour);
     _canvas.setTextDatum(textdatum_t::middle_centre);
     _canvas.drawString(text, x + (width / 2), y + (height / 2));
+}
+
+
+bool Display::_getButtonLayout(UIButton button, const char*& text,
+                               int& x, int& y, int& width, int& height) const {
+    width = SETTINGS_ARROW_WIDTH;
+    height = SETTINGS_ROW_HEIGHT;
+
+    switch (button) {
+        case UI_BUTTON_PLAY:
+            text = "PLAY";
+            x = BUTTON_PLAY_X;
+            y = MAIN_MENU_BUTTON_Y;
+            width = BUTTON_WIDTH;
+            height = BUTTON_HEIGHT;
+            return true;
+        case UI_BUTTON_SETTINGS:
+            text = "SETTINGS";
+            x = BUTTON_SETTINGS_X;
+            y = MAIN_MENU_BUTTON_Y;
+            width = BUTTON_WIDTH;
+            height = BUTTON_HEIGHT;
+            return true;
+        case UI_BUTTON_PLAY_STYLE_PREVIOUS:
+            text = "<";
+            x = SETTINGS_LEFT_ARROW_X;
+            y = SETTINGS_PLAY_STYLE_Y;
+            return true;
+        case UI_BUTTON_PLAY_STYLE_NEXT:
+            text = ">";
+            x = SETTINGS_RIGHT_ARROW_X;
+            y = SETTINGS_PLAY_STYLE_Y;
+            return true;
+        case UI_BUTTON_MAX_DEPTH_DECREASE:
+            text = "<";
+            x = SETTINGS_LEFT_ARROW_X;
+            y = SETTINGS_MAX_DEPTH_Y;
+            return true;
+        case UI_BUTTON_MAX_DEPTH_INCREASE:
+            text = ">";
+            x = SETTINGS_RIGHT_ARROW_X;
+            y = SETTINGS_MAX_DEPTH_Y;
+            return true;
+        case UI_BUTTON_MAX_TIME_DECREASE:
+            text = "<";
+            x = SETTINGS_LEFT_ARROW_X;
+            y = SETTINGS_MAX_TIME_Y;
+            return true;
+        case UI_BUTTON_MAX_TIME_INCREASE:
+            text = ">";
+            x = SETTINGS_RIGHT_ARROW_X;
+            y = SETTINGS_MAX_TIME_Y;
+            return true;
+        case UI_BUTTON_MISTAKE_PROBABILITY_DECREASE:
+            text = "<";
+            x = SETTINGS_LEFT_ARROW_X;
+            y = SETTINGS_MISTAKE_PROBABILITY_Y;
+            return true;
+        case UI_BUTTON_MISTAKE_PROBABILITY_INCREASE:
+            text = ">";
+            x = SETTINGS_RIGHT_ARROW_X;
+            y = SETTINGS_MISTAKE_PROBABILITY_Y;
+            return true;
+        case UI_BUTTON_PREVIOUS_PAGE:
+            text = "PREV";
+            x = SETTINGS_PAGE_BUTTON_X;
+            y = SETTINGS_PAGE_BUTTON_Y;
+            width = SETTINGS_PAGE_BUTTON_WIDTH;
+            return true;
+        case UI_BUTTON_NEXT_PAGE:
+            text = "NEXT";
+            x = SETTINGS_PAGE_BUTTON_X;
+            y = SETTINGS_PAGE_BUTTON_Y;
+            width = SETTINGS_PAGE_BUTTON_WIDTH;
+            return true;
+        case UI_BUTTON_BACK:
+            text = "BACK";
+            x = SETTINGS_BACK_X;
+            y = SETTINGS_BACK_Y;
+            width = SETTINGS_BACK_WIDTH;
+            height = SETTINGS_BACK_HEIGHT;
+            return true;
+        case UI_BUTTON_NONE:
+            return false;
+    }
+
+    return false;
+}
+
+
+Display::UIButton Display::_buttonAt(uint16_t x, uint16_t y) const {
+    switch (_screenState) {
+        case SCREEN_MAIN_MENU:
+            if (pointInRect(x, y, BUTTON_PLAY_X, MAIN_MENU_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+                return UI_BUTTON_PLAY;
+            }
+            if (pointInRect(x, y, BUTTON_SETTINGS_X, MAIN_MENU_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+                return UI_BUTTON_SETTINGS;
+            }
+            break;
+        case SCREEN_SETTINGS_MENU:
+            if (pointInRect(x, y, SETTINGS_LEFT_ARROW_X, SETTINGS_PLAY_STYLE_Y,
+                            SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                return UI_BUTTON_PLAY_STYLE_PREVIOUS;
+            }
+            if (pointInRect(x, y, SETTINGS_RIGHT_ARROW_X, SETTINGS_PLAY_STYLE_Y,
+                            SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                return UI_BUTTON_PLAY_STYLE_NEXT;
+            }
+            if (pointInRect(x, y, SETTINGS_LEFT_ARROW_X, SETTINGS_MAX_DEPTH_Y,
+                            SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                return UI_BUTTON_MAX_DEPTH_DECREASE;
+            }
+            if (pointInRect(x, y, SETTINGS_RIGHT_ARROW_X, SETTINGS_MAX_DEPTH_Y,
+                            SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                return UI_BUTTON_MAX_DEPTH_INCREASE;
+            }
+            if (pointInRect(x, y, SETTINGS_LEFT_ARROW_X, SETTINGS_MAX_TIME_Y,
+                            SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                return UI_BUTTON_MAX_TIME_DECREASE;
+            }
+            if (pointInRect(x, y, SETTINGS_RIGHT_ARROW_X, SETTINGS_MAX_TIME_Y,
+                            SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                return UI_BUTTON_MAX_TIME_INCREASE;
+            }
+            if (pointInRect(x, y, SETTINGS_PAGE_BUTTON_X, SETTINGS_PAGE_BUTTON_Y,
+                            SETTINGS_PAGE_BUTTON_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                return UI_BUTTON_NEXT_PAGE;
+            }
+            if (pointInRect(x, y, SETTINGS_BACK_X, SETTINGS_BACK_Y,
+                            SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT)) {
+                return UI_BUTTON_BACK;
+            }
+            break;
+        case SCREEN_MEMO_SETTINGS_MENU:
+            if (Face::getFace().getPersonality() == MISTAKES_PLAY_STYLE
+                && pointInRect(x, y, SETTINGS_LEFT_ARROW_X, SETTINGS_MISTAKE_PROBABILITY_Y,
+                               SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                return UI_BUTTON_MISTAKE_PROBABILITY_DECREASE;
+            }
+            if (Face::getFace().getPersonality() == MISTAKES_PLAY_STYLE
+                && pointInRect(x, y, SETTINGS_RIGHT_ARROW_X, SETTINGS_MISTAKE_PROBABILITY_Y,
+                               SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                return UI_BUTTON_MISTAKE_PROBABILITY_INCREASE;
+            }
+            if (pointInRect(x, y, SETTINGS_PAGE_BUTTON_X, SETTINGS_PAGE_BUTTON_Y,
+                            SETTINGS_PAGE_BUTTON_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                return UI_BUTTON_PREVIOUS_PAGE;
+            }
+            if (pointInRect(x, y, SETTINGS_BACK_X, SETTINGS_BACK_Y,
+                            SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT)) {
+                return UI_BUTTON_BACK;
+            }
+            break;
+        case SCREEN_NULL:
+            break;
+    }
+
+    return UI_BUTTON_NONE;
+}
+
+
+void Display::_redrawButton(UIButton button, bool highlighted) {
+    const char* text;
+    int x;
+    int y;
+    int width;
+    int height;
+    if (!_getButtonLayout(button, text, x, y, width, height)) return;
+
+    _drawUIButton(text, x, y, width, height, highlighted);
+
+    // Copy only the affected display region. The backing canvas retains the
+    // press state for subsequent animated face redraws.
+    _buttonSprite.fillSprite(COLOUR_BG);
+    _canvas.pushSprite(&_buttonSprite, -x, -y);
+    _buttonSprite.pushSprite(x, y);
+    _faceNeedsRedraw = true;
+}
+
+
+void Display::_activateButton(UIButton button) {
+    switch (button) {
+        case UI_BUTTON_SETTINGS:
+            setScreen(SCREEN_SETTINGS_MENU);
+            break;
+        case UI_BUTTON_PLAY_STYLE_PREVIOUS:
+            _selectPlayStyle(-1);
+            break;
+        case UI_BUTTON_PLAY_STYLE_NEXT:
+            _selectPlayStyle(1);
+            break;
+        case UI_BUTTON_MAX_DEPTH_DECREASE:
+            _selectMaxSearchDepth(-1);
+            break;
+        case UI_BUTTON_MAX_DEPTH_INCREASE:
+            _selectMaxSearchDepth(1);
+            break;
+        case UI_BUTTON_MAX_TIME_DECREASE:
+            _selectMaxThinkingTime(-1);
+            break;
+        case UI_BUTTON_MAX_TIME_INCREASE:
+            _selectMaxThinkingTime(1);
+            break;
+        case UI_BUTTON_MISTAKE_PROBABILITY_DECREASE:
+            _selectMistakeProbability(-1);
+            break;
+        case UI_BUTTON_MISTAKE_PROBABILITY_INCREASE:
+            _selectMistakeProbability(1);
+            break;
+        case UI_BUTTON_PREVIOUS_PAGE:
+            setScreen(SCREEN_SETTINGS_MENU);
+            break;
+        case UI_BUTTON_NEXT_PAGE:
+            setScreen(SCREEN_MEMO_SETTINGS_MENU);
+            break;
+        case UI_BUTTON_BACK:
+            setScreen(SCREEN_MAIN_MENU);
+            break;
+        case UI_BUTTON_PLAY:
+        case UI_BUTTON_NONE:
+            break;
+    }
+}
+
+
+void Display::_releaseButton(uint16_t x, uint16_t y) {
+    UIButton releasedButton = _pressedButton;
+    if (releasedButton == UI_BUTTON_NONE) return;
+
+    bool activate = _buttonAt(x, y) == releasedButton;
+    _pressedButton = UI_BUTTON_NONE;
+    _redrawButton(releasedButton, false);
+    if (activate) _activateButton(releasedButton);
 }
 
 
@@ -489,6 +736,25 @@ void Display::_drawMemoSettingsMenuScreen() {
     _drawCheckbox(_canvas, SETTINGS_STYLE_NAME_X,
                   SETTINGS_PRELOAD_MEMO_Y + (SETTINGS_ROW_HEIGHT / 2), _memoPreloadEnabled);
 
+    _drawUILabel("CAN PANIC", SETTINGS_TITLE_X,
+                 SETTINGS_CAN_PANIC_Y + (SETTINGS_ROW_HEIGHT / 2), true);
+    _drawCheckbox(_canvas, SETTINGS_STYLE_NAME_X,
+                  SETTINGS_CAN_PANIC_Y + (SETTINGS_ROW_HEIGHT / 2), _canPanic);
+
+    if (Face::getFace().getPersonality() == MISTAKES_PLAY_STYLE) {
+        char probabilityText[5];
+        snprintf(probabilityText, sizeof(probabilityText), "%u%%",
+                 static_cast<unsigned>(_mistakeProbabilityPercent));
+        _drawUILabel("MISTAKE PROBABILITY", SETTINGS_TITLE_X,
+                     SETTINGS_MISTAKE_PROBABILITY_Y + (SETTINGS_ROW_HEIGHT / 2), true);
+        _drawUIButton("<", SETTINGS_LEFT_ARROW_X, SETTINGS_MISTAKE_PROBABILITY_Y,
+                      SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT);
+        _drawUILabel(probabilityText, SETTINGS_STYLE_NAME_X,
+                     SETTINGS_MISTAKE_PROBABILITY_Y + (SETTINGS_ROW_HEIGHT / 2));
+        _drawUIButton(">", SETTINGS_RIGHT_ARROW_X, SETTINGS_MISTAKE_PROBABILITY_Y,
+                      SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT);
+    }
+
     _drawUIButton("PREV", SETTINGS_PAGE_BUTTON_X, SETTINGS_PAGE_BUTTON_Y,
                   SETTINGS_PAGE_BUTTON_WIDTH, SETTINGS_ROW_HEIGHT);
     _drawUIButton("BACK", SETTINGS_BACK_X, SETTINGS_BACK_Y, SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT);
@@ -529,6 +795,18 @@ void Display::_selectMaxThinkingTime(int8_t direction) {
 }
 
 
+void Display::_selectMistakeProbability(int8_t direction) {
+    int probability = static_cast<int>(_mistakeProbabilityPercent)
+                    + direction * MISTAKE_PROBABILITY_STEP_PERCENT;
+    if (probability < MIN_MISTAKE_PROBABILITY_PERCENT) probability = MIN_MISTAKE_PROBABILITY_PERCENT;
+    if (probability > MAX_MISTAKE_PROBABILITY_PERCENT) probability = MAX_MISTAKE_PROBABILITY_PERCENT;
+    if (probability == _mistakeProbabilityPercent) return;
+
+    _mistakeProbabilityPercent = static_cast<uint8_t>(probability);
+    _drawSettingValue(_mistakeProbabilityPercent, SETTINGS_MISTAKE_PROBABILITY_Y, "%");
+}
+
+
 void Display::_toggleIdleSearch() {
     _idleSearchEnabled = !_idleSearchEnabled;
     _drawCheckboxValue(_idleSearchEnabled, SETTINGS_IDLE_SEARCH_Y);
@@ -541,53 +819,36 @@ void Display::_toggleMemoPreload() {
 }
 
 
+void Display::_toggleCanPanic() {
+    _canPanic = !_canPanic;
+    _drawCheckboxValue(_canPanic, SETTINGS_CAN_PANIC_Y);
+}
+
+
 void Display::_handleTouch(uint16_t x, uint16_t y) {
+    UIButton button = _buttonAt(x, y);
+    if (button != UI_BUTTON_NONE) {
+        _pressedButton = button;
+        _redrawButton(button, true);
+        return;
+    }
+
     switch (_screenState) {
         case SCREEN_MAIN_MENU:
-            if (pointInRect(x, y, BUTTON_SETTINGS_X, MAIN_MENU_BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
-                setScreen(SCREEN_SETTINGS_MENU);
-            }
             break;
         case SCREEN_SETTINGS_MENU:
-            if (pointInRect(x, y, SETTINGS_LEFT_ARROW_X, SETTINGS_PLAY_STYLE_Y,
-                            SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
-                _selectPlayStyle(-1);
-            } else if (pointInRect(x, y, SETTINGS_RIGHT_ARROW_X, SETTINGS_PLAY_STYLE_Y,
-                                   SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
-                _selectPlayStyle(1);
-            } else if (pointInRect(x, y, SETTINGS_LEFT_ARROW_X, SETTINGS_MAX_DEPTH_Y,
-                                   SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
-                _selectMaxSearchDepth(-1);
-            } else if (pointInRect(x, y, SETTINGS_RIGHT_ARROW_X, SETTINGS_MAX_DEPTH_Y,
-                                   SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
-                _selectMaxSearchDepth(1);
-            } else if (pointInRect(x, y, SETTINGS_LEFT_ARROW_X, SETTINGS_MAX_TIME_Y,
-                                   SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
-                _selectMaxThinkingTime(-1);
-            } else if (pointInRect(x, y, SETTINGS_RIGHT_ARROW_X, SETTINGS_MAX_TIME_Y,
-                                   SETTINGS_ARROW_WIDTH, SETTINGS_ROW_HEIGHT)) {
-                _selectMaxThinkingTime(1);
-            } else if (pointInRect(x, y, SETTINGS_VALUE_X, SETTINGS_IDLE_SEARCH_Y,
-                                   SETTINGS_VALUE_WIDTH, SETTINGS_ROW_HEIGHT)) {
+            if (pointInRect(x, y, SETTINGS_VALUE_X, SETTINGS_IDLE_SEARCH_Y,
+                            SETTINGS_VALUE_WIDTH, SETTINGS_ROW_HEIGHT)) {
                 _toggleIdleSearch();
-            } else if (pointInRect(x, y, SETTINGS_PAGE_BUTTON_X, SETTINGS_PAGE_BUTTON_Y,
-                                   SETTINGS_PAGE_BUTTON_WIDTH, SETTINGS_ROW_HEIGHT)) {
-                setScreen(SCREEN_MEMO_SETTINGS_MENU);
-            } else if (pointInRect(x, y, SETTINGS_BACK_X, SETTINGS_BACK_Y,
-                                   SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT)) {
-                setScreen(SCREEN_MAIN_MENU);
             }
             break;
         case SCREEN_MEMO_SETTINGS_MENU:
             if (pointInRect(x, y, SETTINGS_VALUE_X, SETTINGS_PRELOAD_MEMO_Y,
                             SETTINGS_VALUE_WIDTH, SETTINGS_ROW_HEIGHT)) {
                 _toggleMemoPreload();
-            } else if (pointInRect(x, y, SETTINGS_PAGE_BUTTON_X, SETTINGS_PAGE_BUTTON_Y,
-                                   SETTINGS_PAGE_BUTTON_WIDTH, SETTINGS_ROW_HEIGHT)) {
-                setScreen(SCREEN_SETTINGS_MENU);
-            } else if (pointInRect(x, y, SETTINGS_BACK_X, SETTINGS_BACK_Y,
-                                   SETTINGS_BACK_WIDTH, SETTINGS_BACK_HEIGHT)) {
-                setScreen(SCREEN_MAIN_MENU);
+            } else if (pointInRect(x, y, SETTINGS_VALUE_X, SETTINGS_CAN_PANIC_Y,
+                                   SETTINGS_VALUE_WIDTH, SETTINGS_ROW_HEIGHT)) {
+                _toggleCanPanic();
             }
             break;
         case SCREEN_NULL:
@@ -615,16 +876,22 @@ Display::Display()
       _faceSprite(&_display),
       _faceFrame(&_display),
       _settingsValueSprite(&_display),
+      _buttonSprite(&_display),
       _screenState(SCREEN_MAIN_MENU),
       _previousScreenState(SCREEN_NULL),
       _faceTransform(),
       _faceRefreshTimer(0),
       _faceNeedsRedraw(false),
       _touchWasPressed(false),
+      _pressedButton(UI_BUTTON_NONE),
+      _lastTouchX(0),
+      _lastTouchY(0),
       _maxSearchDepth(DEFAULT_MAX_SEARCH_DEPTH),
       _maxThinkingTimeSeconds(DEFAULT_MAX_THINKING_TIME_SECONDS),
+      _mistakeProbabilityPercent(DEFAULT_MISTAKE_PROBABILITY_PERCENT),
       _idleSearchEnabled(DEFAULT_IDLE_SEARCH_ENABLED),
-      _memoPreloadEnabled(DEFAULT_MEMO_PRELOAD_ENABLED) {}
+      _memoPreloadEnabled(DEFAULT_MEMO_PRELOAD_ENABLED),
+      _canPanic(DEFAULT_CAN_PANIC) {}
 
 
 void Display::init() {
@@ -637,6 +904,7 @@ void Display::init() {
     initSprite(_faceSprite, FACE_SPRITE_W, FACE_SPRITE_H);
     initSprite(_faceFrame, FACE_FRAME_SIZE, FACE_FRAME_SIZE);
     initSprite(_settingsValueSprite, SETTINGS_VALUE_WIDTH, SETTINGS_ROW_HEIGHT);
+    initSprite(_buttonSprite, BUTTON_WIDTH, BUTTON_HEIGHT);
 
     PlayStyle playStyle = static_cast<PlayStyle>(randomU32() % static_cast<uint32_t>(PLAY_STYLE_COUNT));
     Face::getFace().setPersonality(playStyle);
@@ -649,8 +917,15 @@ void Display::draw() {
     uint16_t touchX;
     uint16_t touchY;
     bool touchIsPressed = _display.getTouch(&touchX, &touchY) != 0;
-    if (touchIsPressed && !_touchWasPressed) {
-        _handleTouch(touchX, touchY);
+    if (touchIsPressed) {
+        _lastTouchX = touchX;
+        _lastTouchY = touchY;
+
+        if (!_touchWasPressed) {
+            _handleTouch(touchX, touchY);
+        }
+    } else if (_touchWasPressed) {
+        _releaseButton(_lastTouchX, _lastTouchY);
     }
     _touchWasPressed = touchIsPressed;
 

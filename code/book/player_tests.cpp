@@ -163,6 +163,43 @@ static void testIterativeDeepeningReachesMaxDepth() {
 }
 
 
+static void testPanicExtendsThreatenedSearch() {
+    Memo memo;
+    assert(memo.isValid());
+
+    Player player(&memo);
+    assert(!player.canPanic());
+    assert(player.getPanicDepth() == DEFAULT_PANIC_DEPTH);
+    player.setCanPanic(true);
+    player.setMaxDepth(2);
+    player.setPanicDepth(3);
+    player.setTimeLimitMs(0);
+
+    // Second threatens a vertical win in column 6. The non-blocking root moves
+    // score negatively at depth 2 and trigger the extra panic depth.
+    Board board;
+    board.placeFirstPiece(0);
+    board.placeSecondPiece(6);
+    board.placeFirstPiece(1);
+    board.placeSecondPiece(6);
+    board.placeFirstPiece(0);
+    board.placeSecondPiece(6);
+
+    MoveDecision decision = player.chooseMove(board);
+    assert(decision.column == 6);
+
+    // The neutral blocking move in column 6 is searched last, so reaching
+    // depth 2 in its child proves the root iteration at panic depth 3 finished.
+    Board lastChild = board;
+    lastChild.placeFirstPiece(6);
+    uint64_t key = lastChild.getKey();
+    uint32_t slot = key & MEMO_SLOT_MASK;
+    uint32_t tag = static_cast<uint32_t>(key >> MEMO_BITS);
+    assert(memo.getTag(slot) == tag);
+    assert(memo.getDepth(slot) == 2);
+}
+
+
 static void testIdleSearchIgnoresTimeLimitAndHonoursForceStop() {
     Memo memo;
     assert(memo.isValid());
@@ -194,6 +231,7 @@ int main() {
     testNoLegalMove();
     testMemoBackedSearch();
     testIterativeDeepeningReachesMaxDepth();
+    testPanicExtendsThreatenedSearch();
     testIdleSearchIgnoresTimeLimitAndHonoursForceStop();
     std::puts("player tests passed");
     return 0;

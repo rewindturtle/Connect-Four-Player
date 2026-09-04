@@ -19,9 +19,10 @@ namespace {
 
 
 Player::Player(Memo* memo) : _memo(memo), _mistakeProb(0.2f),
-                             _timeLimitMs(DEFAULT_SEARCH_TIME_LIMIT_MS), _maxDepth(4), _turn(0),
+                             _timeLimitMs(DEFAULT_SEARCH_TIME_LIMIT_MS), _maxDepth(4),
+                             _panicDepth(DEFAULT_PANIC_DEPTH), _turn(0),
                              _playStyle(STANDARD_PLAY_STYLE), _lastOpponentColumn(NO_COLUMN), _isFirst(true),
-                             _isRed(true), _forceStop(false) {}
+                             _isRed(true), _canPanic(false), _forceStop(false) {}
 
 
 // Forward declaration
@@ -415,6 +416,14 @@ static void initializeLegalScores(const Board& board, int8_t (&scores)[7]) {
 }
 
 
+static bool isThreatened(const int8_t (&scores)[7]) {
+    for (uint8_t c = 0; c < 7; ++c) {
+        if (scores[c] != MIN_SCORE && scores[c] < 0) return true;
+    }
+    return false;
+}
+
+
 // Returns true only if every legal column completed at this depth.
 static bool scoreColumns(const Player& player, const Board& board, uint8_t maxDepth, int8_t (&scores)[7],
                          uint32_t startMs, uint32_t timeLimitMs) {
@@ -444,6 +453,27 @@ static bool scoreColumns(const Player& player, const Board& board, uint8_t maxDe
 }
 
 
+// Commits scores only after every legal root column finishes at a depth. If
+// the deadline or force-stop interrupts an iteration, the previous completed
+// depth remains usable.
+static void deepenSearch(const Player& player, const Board& board, uint8_t firstDepth, uint8_t targetDepth,
+                         int8_t (&scores)[7], uint8_t& completedDepth,
+                         uint32_t startMs, uint32_t timeLimitMs) {
+    if (firstDepth == 0 || firstDepth > targetDepth) return;
+
+    uint8_t depth = firstDepth;
+    while (depth <= targetDepth && !shouldStopSearch(player, startMs, timeLimitMs)) {
+        int8_t iterationScores[7];
+        if (!scoreColumns(player, board, depth, iterationScores, startMs, timeLimitMs)) break;
+
+        memcpy(scores, iterationScores, sizeof(iterationScores));
+        completedDepth = depth;
+        if (depth == targetDepth) break;
+        ++depth;
+    }
+}
+
+
 MoveDecision Player::chooseMove(const Board& board) const {
     int8_t scores[7];
     initializeLegalScores(board, scores);
@@ -455,15 +485,17 @@ MoveDecision Player::chooseMove(const Board& board) const {
     uint32_t timeLimitMs = getTimeLimitMs();
 
     if (maxSearchDepth != 0) {
-        uint8_t depth = maxSearchDepth < INITIAL_SEARCH_DEPTH ? maxSearchDepth : INITIAL_SEARCH_DEPTH;
-        while (depth <= maxSearchDepth && !shouldStopSearch(*this, startMs, timeLimitMs)) {
-            int8_t iterationScores[7];
-            if (!scoreColumns(*this, board, depth, iterationScores, startMs, timeLimitMs)) break;
+        uint8_t firstDepth = maxSearchDepth < INITIAL_SEARCH_DEPTH ? maxSearchDepth : INITIAL_SEARCH_DEPTH;
+        deepenSearch(*this, board, firstDepth, maxSearchDepth, scores, completedDepth, startMs, timeLimitMs);
 
-            memcpy(scores, iterationScores, sizeof(scores));
-            completedDepth = depth;
-            if (depth == maxSearchDepth) break;
-            ++depth;
+        // Panic extends an otherwise completed move search when the normal
+        // horizon reveals a losing reply. It shares the original deadline.
+        if (canPanic() && completedDepth == maxSearchDepth && isThreatened(scores)) {
+            uint8_t panicDepth = getPanicDepth() < remainingMoves ? getPanicDepth() : remainingMoves;
+            if (panicDepth > completedDepth) {
+                deepenSearch(*this, board, completedDepth + 1, panicDepth,
+                             scores, completedDepth, startMs, timeLimitMs);
+            }
         }
     }
 
